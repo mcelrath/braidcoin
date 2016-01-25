@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 
+# Sample code for doing computations with braids
+#
+# The code here emphasizes clarity over speed.  We have used the memoize()
+# function to memoize functions that are called repeatedly with the same
+# arguments.  Use of memoize is an indication that better algorithms exist.
+
 import hashlib
-import bitcoin
+import bitcoin  # uses python-bitcoinlib https://github.com/petertodd/python-bitcoinlib
 from bitcoin.core import uint256_from_str as uint256
 import graph_tool.all as gt
 import graph_tool.draw as gtdraw
@@ -16,24 +22,26 @@ TICKSIZE = 0.1      # One "tick" of the network in which beads will be propagate
 DIFFICULTY = 6     # The likelihood that a node with target = 1 will mine a bead in a given tick
 
 bead_color          = ( 27/255, 158/255, 119/255, 1)    # Greenish
-sibling_color       = (217/255,  95/255,   2/255, 1)    # Orangeish
+genesis_color       = (217/255,  95/255,   2/255, 1)    # Orangeish
 cohort_color        = (117/255, 112/255, 179/255, 1)    # Purplish
 tip_color           = (231/255,  41/255, 138/255, 1)    # Pinkish
-genesis_color       = (102/255, 166/255,  30/255, 1)    # Light Greenish
+sibling_color       = (102/255, 166/255,  30/255, 1)    # Light Greenish
 highlight1_color    = (      1,       1,       0, 1)    # Yellow
 highlight2_color    = (      1,       0,       1, 1)    # Magenta
+highlight3_color    = (      0,       1,       1, 1)    # Yellow
 nohighlight_color   = (      1,       1,       1, 1)    # White
 me_color            = (      0,       0,       0, 1)    # Black
 
-ancestor_color      = highlight1_color
 descendant_color    = highlight2_color
+ancestor_color      = highlight3_color
 
 # A rotating color palette to color cohorts
-color_palette = [sibling_color, cohort_color, tip_color, genesis_color]
+color_palette = [genesis_color, cohort_color, sibling_color, tip_color]
 
 def sha256(x: int): return hashlib.sha256(('%d'%x).encode()).digest()
 
 def memoize(f):
+    """ A helper function for Braid.rank() so that we don't have to recompute it. """
     memo = {}
     def helper(x):
         if x not in memo:            
@@ -162,6 +170,7 @@ class Bead:
         This class stores auxiliary information about a bead and is separate
         from the vertex being stored by the Braid class. """
 
+    # FIXME lots of stuff here
     def __init__(self, hash, parents, transactions, network, creator):
         self.t = network.t
         self.hash = hash    # a hash that identifies this block
@@ -181,15 +190,12 @@ class Braid(gt.Graph):
     """ A Braid is a Directed Acyclic Graph with no incest (parents may not also
         be non-parent ancestors).  A braid may have multiple tips. """
 
-# FIXME it seems to me that a braid could be held as a set of beads whcih cannot
-# be moved past one anther.  e.g. at vertex cuts.
     def __init__(self, beads=[]):
         super().__init__(directed=True, vorder=True)
-        #super().set_directed(True) # Graphs are directed by default
         self.times = self.new_vertex_property("double")
-        self.beads = []     # A list of beads in this braid
-        self.vhashes = {}   # A dict of (hash, Vertex) for each vertex
-        self.vcolors = self.new_vertex_property("vector<float>") # vertex colorings
+        self.beads = []                                           # A list of beads in this braid
+        self.vhashes = {}                                         # A dict of (hash, Vertex) for each vertex
+        self.vcolors = self.new_vertex_property("vector<float>")  # vertex colorings
         self.vhcolors = self.new_vertex_property("vector<float>") # vertex halo colorings
 
         if beads:
@@ -198,13 +204,8 @@ class Braid(gt.Graph):
                 self.vhashes[b.hash] = self.add_vertex()
                 self.vhashes[b.hash].bead = b
             # FIXME add edges if beads has more than one element.
-        self.tips = set()      # A tip is a bead with no children.  FIXME this
-                            # could also be an integer, showing how many tips at
-                            # the end of self.beads are childless
+        self.tips = set()      # A tip is a bead with no children.
         self.tips = {beads[-1]}
-
-    #def vertex(bead: Bead):
-    #    return self.vhashes[bead.hash]
 
     def extend(self, bead):
         """ Add a bead to the end of this braid. Returns True if the bead
@@ -230,125 +231,100 @@ class Braid(gt.Graph):
         """ Print a (sub-)set of vertices in compact form. """
         print("{"+",".join([str(v) for v in vs])+"}")
 
-    # FIXME remove?  not used
-    def make_children(self):
-        """ Walk the Braid and make children links for each Bead. """
-        for bead in self.beads:
-            for parent in bead.parents:
-                parent.children.add(bead)
+# FIXME I can make 3-way siblings too: find the common ancestor of any 3 siblings
+# and ask what its rank is...
+    def siblings(self, cohort):
+        """ The siblings of a bead are other beads for which it cannot be
+            decided whether the come before or after this bead in time.  
+            Note that it does not make sense to call siblings() on a cohort 
+            which contains dangling chain tips.  The result is a dict of 
+                (s,v): (m,n) 
+            which can be read as: 
+                The sibling $s$ of vertex $v$ has a common ancestor $m$
+                generations away from $v$ and a common descendant $n$
+                generations away from $v$.
+            """
+        retval = dict()
+        # Since siblings are mutual, we could compute (s,c) and (c,s) at the same time
+        for c in cohort: 
+            siblings = cohort - self.ancestors(c, cohort) - self.descendants(c, cohort) - {c}
+            for s in siblings:
+                ycas = self.youngest_common_ancestors({s,c})
+                ocds = self.oldest_common_descendants({s,c})
+                # Step through each generation of parents/children until the common ancestor is found
+                pgen = {c}
+                for m in range(1,len(cohort)):
+                    pgen = {q for p in pgen for q in self.parents(p) }
+                    if pgen.intersection(ycas) or not pgen: break
+                cgen = {c}
+                for n in range(1,len(cohort)):
+                    cgen = {q for p in cgen for q in self.children(p)}
+                    if cgen.intersection(ocds) or not cgen: break
+                retval[int(s),int(c)] = (m,n)
+        return retval
 
-    def analyze(self):
-        ancestors = set()
-        descendants = set(self.vertices())
-        all_vertices = set(self.vertices())
-        for v in self.vertices():
-            ocds = self.oldest_common_descendants(self.children(v))
-            for c in [x.target() for x in v.out_edges()]:
-                newancestors = copy(ancestors) + {c}
-                newdescendants = copy(descendants) - self.children(v) # remove all siblings
-                # Find the first common descendant of all children of v.
-            cohort = all_vertices - descendants - ancestors
-            print(cohort)
-
-    def siblings(self, v):
-        """ The siblings of a bead are defined as all the beads that are
-            descendants of any parent, and ancestors of any grandchild of a
-            parent.  """
-        # FIXME return a dict where keys are vertices, and values are tuples of
-        # the rank (m,n)
-        parents = {e.source() for e in v.in_edges()}
-        siblings = reduce(set.union, [{x.target() for x in {e for e in p.out_edges()}} for p in parents])
-        grandchildren = reduce(set.union, [{x.target() for x in {e for e in s.out_edges()}} for s in siblings])
-        lastsiblings = copy(siblings)
-        while True:
-            nextsiblings = reduce(set.union, [{x.target() for x in {e for e in s.out_edges()}} for s in lastsiblings])
-            nextsiblings -= grandchildren
-            if not nextsiblings: return siblings
-            siblings |= nextsiblings
-            lastsiblings = nextsiblings
-
-    def cohorts(self, cohort=None, older=False):
+    def cohorts(self, initial_cohort=None, older=False):
         """ The cohort of a bead v are the siblings of v plus its sibling's
-            siblings, recursively.  """
-        if older: (edgef, nodef, nextgen_f) = ("out_edges","target", self.parents)
-        else:     (edgef, nodef, nextgen_f) = ("in_edges", "source", self.children)
+            siblings, recursively.  This function returns a generator and should
+            be used like:
+                for c in b.cohorts():
+                    print(c) 
+        """
         ncohorts = 1
-        vertices = cohort or {self.vertex(0)}
+        cohort = initial_cohort or {self.vertex(0)}
         while True:
-            #print("================ next cohort: {"+",".join([str(v) for v in vertices])+"}")
-            yield vertices
-            # Find all children of the current cohort that are not in the cohort
-            nextcohort = reduce(set.union, [{getattr(x, nodef)() for x in 
-                {e for e in getattr(v,edgef)()} if getattr(x,nodef)() not in vertices} 
-                for v in vertices])
-            # Recursively expand cohort by adding siblings of existing beads
-            lastgen = set()
-            while True: 
-                # We must compute the common generation with each iteration
-                # because it's possible that the oldest common descendant is a
-                # sibling with another child.
-                cgen =  self.common_generation(nextcohort, older)
-                nextgen = reduce(set.union, [{getattr(x,nodef)() for x in {e for e in
-                    getattr(s,edgef)()} if getattr(x,nodef)() not in cgen} for s in nextcohort])
-                if not nextgen or nextgen == lastgen: break
-                nextcohort.update(nextgen)
-                lastgen = nextgen
-            vertices = nextcohort
-            if not vertices: 
+            yield cohort
+            # It looks like python may be optimizing this statement somehow, so
+            # use copy() to force it to make a new set.
+            cohort = copy(self.next_generation(cohort, older) - cohort) # find a set of beads in the next cohort
+            nextgen = copy(cohort)                                      # tracks on generation by parent/child edges
+            lastcgen = set()
+            while True: # Add beads to the cohort one generation at a time
+                # We must compute the oldest common descendant/youngest common
+                # ancestor with each iteration because it's possible that the
+                # oldest common descendant is a sibling with another child.
+                cgen =  self.common_generation(cohort, older)   # Find a set of beads that are ancestors/descendants 
+                cohort.update(lastcgen - cgen)                  # of every bead in the cohort
+                nextgen = self.next_generation(nextgen.union(lastcgen-cgen), older) - cgen # Step one more generation
+                if not nextgen: break
+                cohort.update(nextgen)
+                lastcgen = cgen
+            if not cohort: 
                 self.ncohorts = ncohorts
-                return
+                return # Ends the iteration (StopIteration)
             ncohorts += 1
 
-    # FIXME implement, and cache results
-    @memoize
-    def rank(self, u, v):
-        """ Return a tuple (m,n) of the rank of the vertex u with respect to v.
-            Note rank is not symmetric: rank(u,v) != rank(v,u) in general. """
-        if u == v: return (0,0)
-
-    def sibling_children(self, v):
-        """ Return all descendants until we find a subgraph cut relative to v by bfs. """
-        descendants = {e.target() for e in v.out_edges()}
-        if len(descendants) == 1: return set()
-        ocds = self.oldest_common_descendants(v)
-
-        lastgen = copy(descendants)
-        for c in lastgen:
-            nextgen = {x.target() for x in c.out_edges()}
-            nextgen -= ocds # Remove common descendants (termination)
-            descendants |= nextgen
-            lastgen = nextgen
-        return descendants
-
     def exclude(self, vs, predicate):
+        """ Recursively exclude beads which satisfy a predicate (usually either
+            parents or children) -- this removes all ancestors or descendants. """
         lastvs = copy(vs)
         while True:
             newvs = {v for v in vs if predicate(v) not in vs}
             if newvs == lastvs: return newvs
             lastvs = newvs
-
+    
+    #FIXME @memoize # This is called twice in siblings() for {s,c} and {c,s} which are identical
     def common_generation(self, vs, older=True):
         """ Find the first common ancestor/descendant generation of all vs by bfs. """
         if older: (edgef, nodef, nextgen_f) = ("out_edges","target", self.parents)
         else:     (edgef, nodef, nextgen_f) = ("in_edges", "source", self.children)
         if not isinstance(vs, set): vs = {vs}
         lastvs = self.exclude(vs, nextgen_f)
-#print("ocds of {"+",".join([str(v) for v in lastvs])+"} are ", end="")
         nextgen = {v: nextgen_f(v) for v in lastvs}
         lastgen = copy(nextgen)
         firstv = next(iter(lastvs))
         while True:
             commond = set.intersection(*[nextgen[v] for v in nextgen]) - lastvs
-            if commond: return self.exclude(commond, nextgen_f)
-#print("{"+",".join([str(v) for v in self.exclude(commond, nextgen_f)])+"}")
+            if commond: 
+                return self.exclude(commond, nextgen_f)
             else: # add one generation of descendants for bfs
                 nextgenupd = dict()
                 for v in lastgen:
                     nextgenupd[v] = nextgen_f(lastgen[v])
                     nextgen[v].update(nextgenupd[v])
                 # We hit a tip, on all paths there can be no common descendants
-                if not any([nextgenupd[v] for v in nextgenupd]): return set() 
-#print("{}")
+                if not all([nextgenupd[v] for v in nextgenupd]): 
+                    return set() 
                 lastgen = nextgen
 
     def oldest_common_descendants(self, vs):
@@ -357,112 +333,24 @@ class Braid(gt.Graph):
     def youngest_common_ancestors(self, vs):
         return self.common_generation(vs, older=True)
 
-#    # FIXME this can be generalized to find either the youngest common ancestor
-#    # or oldest common descendant with a direction flag.
-#    def oldest_common_descendants(self, vs):
-#        """ Find the first common descendants of all vs by bfs. """
-#        if not isinstance(vs, set): vs = {vs}
-#        youngestvs = self.exclude(vs, self.children)
-#        #print("ocds of {"+",".join([str(v) for v in youngestvs])+"} are ", end="")
-#        descendants = {v: self.children(v) for v in youngestvs}
-#        lastgen = copy(descendants)
-#        firstv = next(iter(youngestvs))
-#        while True:
-#            commond = set.intersection(*[descendants[v] for v in descendants]) - youngestvs
-#            if commond: return self.exclude(commond, self.children)
-#            else: # add one generation of descendants for bfs
-#                nextgen = dict()
-#                for v in lastgen:
-#                    nextgen[v] = self.children(lastgen[v])
-#                    descendants[v].update(nextgen[v])
-#                # We hit a tip, on all paths there can be no common descendants
-#                if not any([nextgen[v] for v in nextgen]): return set() 
-#                lastgen = nextgen
-#
-#    def youngest_common_ancestors(self, vs):
-#        """ Find the first common ancestors of all vs by bfs. """
-#        # FIXME fails if elements of vs are ancestors of each other
-#        # Genesis bead special case
-#        if not isinstance(vs, set): vs = {vs}
-#        ancestors = dict()
-#        for v in vs:
-#            ancestors[v] = self.parents(v)
-#            if not ancestors[v]: return set() # The genesis bead is in vs
-#        #print(ancestors)
-#        if not ancestors: return ancestors # No ancestors, empty set
-#        lastgen = copy(ancestors)
-#        firstv = next(iter(vs))
-#        while True:
-#            commona = set.intersection(*[ancestors[v] for v in ancestors]) - vs
-#            if commona: return commona
-#            else:
-#                # add one generation of ancestors for bfs
-#                nextgen = {}
-#                for v in lastgen:
-#                    nextgen[v] = self.parents(lastgen[v])
-#                    ancestors[v].update(nextgen[v])
-#                lastgen = nextgen
-
-    def old_analyze(self, startv=0, highlight=0):
-        """ Perform analysis on the Braid, filling in various data structures. """
-        #for bead in self.beads:
-        #    for parent in bead.parents:
-        #        parent.children.add(bead)
-        #        parent.siblings.update(bead.parents - {parent}) # If I have multiple parents, they must be siblings.
-
-        nchains = 1 # The number of parallel chains
-        v = self.vertex(startv)
-        if v.in_degree() == 0:
-            self.vcolors[v] = genesis_color
-        for c in [x.target() for x in v.out_edges()]:
-            if c.out_degree() == 0:
-                self.vcolors[c] = tip_color
-            #else: self.vcolors[c] = bead_color
-            if c == highlight:
-                for s in [x.target() for x in v.out_edges()]:
-                    self.vhcolors[s] = cohort_color
-                    if s != c: 
-                        self.vcolors[s] = sibling_color
-                    # Follow children of siblings until we reach one of my own children
-            self.analyze(startv=c)
-
-        #for bead in self.beads: # We really should be following links.
-        #    nchains += len(children)-1
-        #    children = set(bead.children)
-        #    if nchains == 1: self.vcolors["graphcuts"][bead.vertex
-        #    for sibling in self.siblings:
-                # Find our common ancestor.
-
-        # For each bead:
-        #   Traverse all beads between 
-
-    def all_generations(self, v:gt.Vertex, older):
+    #FIXME helper problems @memoize
+    def all_generations(self, v:gt.Vertex, older, cohort=None):
         """ Return the next generation older or younger depending on the value
             of <older>. """
         if older: (edgef, nodef) = ("out_edges","target")
         else:     (edgef, nodef) = ("in_edges", "source")
-        result = set()
-        for x in [getattr(y, nodef)() for y in getattr(v, edgef)()]:
-            result.update({x}.union(self.nextgen(x, older)))
+        if cohort and v not in cohort: return set()
+        result = {x for x in [getattr(y, nodef)() for y in getattr(v, edgef)()]}
+        if cohort: result = result.intersection(cohort)
+        if not result: return set()
+        for x in copy(result): result.update(self.all_generations(x, older, cohort))
         return result
 
-    def ancestors(self, v:gt.Vertex):
-       return self.all_generations(v, older=True)
+    def ancestors(self, v:gt.Vertex, cohort=None):
+       return self.all_generations(v, older=True, cohort=cohort)
 
-    def descendants(self, v:gt.Vertex):
-       return self.all_generations(v, older=False)
-
-    #def ancestors(self, v:gt.Vertex):
-    #    result = set()
-    #    for x in [y.source() for y in v.in_edges()]:
-    #        result.update({x}.union(self.ancestors(x)))
-    #    return result
-
-    #def descendants(self, v:gt.Vertex):
-    #    result = set()
-    #    for x in [y.target() for y in v.out_edges()]:
-    #        result.update({x}.union(self.descendants(x)))
-    #    return result
+    def descendants(self, v:gt.Vertex, cohort=None):
+       return self.all_generations(v, older=False, cohort=cohort)
 
     def next_generation(self, vs, older):
         if older: (edgef, nodef) = ("out_edges","target")
@@ -479,30 +367,6 @@ class Braid(gt.Graph):
 
     def children(self, vs):
         return self.next_generation(vs, older=False)
-
-
-    #def children(self, vs):
-    #    if isinstance(vs, gt.Vertex):
-    #        return {y.target() for y in vs.out_edges()}
-    #    elif isinstance(vs, set):
-    #        result = set()
-    #        for v in vs:
-    #            result.update(self.children(v))
-    #        return result
-
-    #def parents(self, vs):
-    #    if isinstance(vs, gt.Vertex):
-    #        return {y.source() for y in vs.in_edges()}
-    #    elif isinstance(vs, set):
-    #        result = set()
-    #        for v in vs:
-    #            result.update(self.parents(v))
-    #        return result
-
-    def highlight(self, vertices=None, hcolor=highlight1_color):
-        if not vertices: return
-        for v in vertices:
-            self.vhcolors[v] = hcolor
 
     def winners(self, txid):
         """ The "winner" of a transaction <txid> are the beads for which no
@@ -526,47 +390,57 @@ class Braid(gt.Graph):
             ancestors = {}
 
     def plot(self, focusbead=None, focuscohort=None, numbervertices=False,
-            output=None):
+            highlightancestors=False, output=None):
         """ Plot this braid, possibly coloring graph cuts.  <focusbead>
             indicates which bead to consider for coloring its siblings and
             cohort. """
         ancestors = set()
         descendants = set()
-        vorder = self.new_vertex_property("float")
-        kwargs = {'vertex_size':8, 
+        vlabel = self.new_vertex_property("string")
+        kwargs = {'vertex_size':12, 
+                  'vertex_font_size':8,
                   'nodesfirst':True,
                   #vertex_text':numbervertices and self.vertex_index or None, # FIXME use rank instead if focusbead
+                  'vertex_text':vlabel,
                   'vertex_halo':True, 
                   'vertex_fill_color':self.vcolors,
-                  'vertex_halo_color':self.vhcolors, 
-                  'vorder':vorder}
+                  'vertex_halo_color':self.vhcolors}
         if output: kwargs['output'] = output
         if focusbead:
             ancestors   = self.ancestors(focusbead)
             descendants = self.descendants(focusbead)
-            siblings    = self.siblings(focusbead)
-            kwargs['vertex_halo_size'] = 2
+            kwargs['vertex_halo_size'] = 1.5
+
             for v in self.vertices():
                 # Decide the bead's color
                 if v.in_degree() == 0:
                     self.vcolors[v] = genesis_color
                 elif v.out_degree() == 0:
                     self.vcolors[v] = tip_color
-                elif siblings and v in siblings:
-                    self.vcolors[v] = sibling_color
                 else:
                     self.vcolors[v] = bead_color
+
                 # Decide the highlight color
                 if v == focusbead:
                     self.vhcolors[v] = me_color
-                elif v in ancestors:
+                elif v in ancestors and highlightancestors:
                     self.vhcolors[v] = ancestor_color
-                elif v in descendants:
-                    self.vhcolors[v] = descendant_color
+                elif v in descendants and highlightancestors:
+                   self.vhcolors[v] = descendant_color
                 else:
                     self.vhcolors[v] = nohighlight_color
-                # Indicate ordering of vertices
-                vorder[v] = self.beads[int(v)].t
+
+            # Label our siblings with their rank
+            for cohort in self.cohorts(): 
+                if focusbead in cohort:
+                    for c in cohort:
+                        self.vcolors[c] = cohort_color
+                    for (s,v),(m,n) in self.siblings(cohort).items():
+                        if v == focusbead:
+                            vlabel[self.vertex(s)] = "%d,%d"%(m,n)
+                            #self.vcolors[s] = sibling_color
+                    break
+
         else:
             cnum = 0
             #ncohorts = len(list(self.cohorts()))
@@ -575,9 +449,9 @@ class Braid(gt.Graph):
                     if focuscohort == cnum:
                         self.vhcolors[v] = highlight1_color
                     self.vcolors[v] = color_palette[cnum%len(color_palette)]
+                    self.vhcolors[v] = nohighlight_color
                 cnum += 1
+            if numbervertices: kwargs['vertex_text'] = self.vertex_index
 
-
-        if numbervertices: kwargs['vertex_text']= self.vertex_index
         gtdraw.graph_draw(self, **kwargs)
 
