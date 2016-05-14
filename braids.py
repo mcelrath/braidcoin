@@ -12,6 +12,8 @@ from bitcoin.core import uint256_from_str as uint256
 import graph_tool.all as gt
 import graph_tool.draw as gtdraw
 import numpy as np
+import scipy
+import scipy.stats
 from numpy.random import choice, sample, randint
 from copy import copy
 from functools import reduce
@@ -71,16 +73,16 @@ class Network:
 # FIXME not modelling mempool propegation means that we will either have all blocks in a round have
 # the same tx, or none.  Maybe each round mining should grab a random subset?
         if not target:
-            self.nodes = [Node(self.genesis, self, nodeid, difficulty=difficulty) for nodeid in range(nnodes)]
+            self.nodes = [Node(self.genesis, self, nodeid, 1/TICKSIZE, difficulty=difficulty) for nodeid in range(nnodes)]
         else:
-            self.nodes = [Node(self.genesis, self, nodeid, target=target) for nodeid in range(nnodes)]
+            self.nodes = [Node(self.genesis, self, nodeid, 1/TICKSIZE, target=target) for nodeid in range(nnodes)]
         for (node, peers) in zip(self.nodes, [choice(list(set(range(nnodes)) - {me}),  \
                 npeers, replace=False) for me in range(nnodes)]):
             #print("Node ", node, " has peers ", peers)
             node.setpeers([self.nodes[i] for i in peers])
         self.reset(difficulty=difficulty, target=target)
 
-    def tick(self, mine=True):
+    def tick(self, mine=False):
         """ Execute one tick. """
         self.t += self.ticksize
 
@@ -119,7 +121,7 @@ class Network:
 
 class Node:
     """ Abstraction for a node. """
-    def __init__(self, genesis, network, nodeid, difficulty=None, target=None):
+    def __init__(self, genesis, network, nodeid, hashrate, difficulty=None, target=None):
         self.genesis = genesis
         self.network = network
         self.peers = []
@@ -127,6 +129,7 @@ class Node:
         self.nodeid = nodeid
         self.nodesalt = uint256(sha256(randint(2**63-1)))
         self.nonce = 0      # Will be increased in the mining process
+        self.hashrate = hashrate
         self.reset(difficulty, target)
 
     def reset(self, difficulty=None, target=None):
@@ -140,6 +143,9 @@ class Node:
             self.target = target
         else:
             self.target = 1 << (256-5)
+        #print(self.braids[0].beads)
+        self.braids[0].tips = {self.beads[0]}
+        self.hremaining = np.random.geometric(self.target/MAX_HASH) 
 
     def __str__(self):
         return "<Node %d>"%self.nodeid
@@ -155,6 +161,7 @@ class Node:
         """ Add a Bead satisfying <target>. """
         # First try to extend all braids by received beads that have not been added to a braid
         newincoming = set()
+        oldtips = self.braids[0].tips
         while len(newincoming) != len(self.incoming):
             for bead in self.incoming:
                 for braid in self.braids:
@@ -168,9 +175,19 @@ class Node:
                 b = Bead(PoW, copy(self.braids[0].tips), copy(self.mempool), self.network, self.nodeid)
                 self.receive(b)     # Send it to myself (will rebroadcast to peers)
                 # TODO remove txids from mempool
-        # The probability that I will generate a successful hash is given by the
-        # Poisson distribution, so let's evaluate that, rather than burning your
-        # CPU, eh?  Let's use a timeout, and evaluate the probability instead...
+        else :
+            self.hremaining -= self.hashrate*self.network.ticksize
+            if(self.hremaining <= 0):
+                PoW = (uint256(sha256(self.nodesalt**3+self.nonce))*self.target)//MAX_HASH
+                self.nonce += 1
+                # The expectation of how long it will take to mine a block is Geometric
+                # This node will generate one after this many hashing rounds (ticks)
+                b = Bead(PoW, copy(self.braids[0].tips), copy(self.mempool), self.network, self.nodeid)
+                self.receive(b)     # Send it to myself (will rebroadcast to peers)
+                self.hremaining = np.random.geometric(self.target/MAX_HASH) 
+            elif(self.braids[0].tips != oldtips):
+                # reset mining if we have new tips
+                self.hremaining = np.random.geometric(self.target/MAX_HASH) 
 
     def receive(self, bead):
         """ Recieve announcement of a new bead. """
@@ -243,8 +260,8 @@ class Braid(gt.Graph):
                 self.vhashes[b.hash] = self.add_vertex()
                 self.vhashes[b.hash].bead = b
             # FIXME add edges if beads has more than one element.
+            self.tips = {beads[-1]}
         self.tips = set()      # A tip is a bead with no children.
-        self.tips = {beads[-1]}
         self.acache = {}
         self.dcache = {}
 
@@ -322,143 +339,6 @@ class Braid(gt.Graph):
                 retval[int(s),int(c)] = (m,n)
         return retval
 
-    def cohorts2(self, initial_cohort=None, older=False):
-        """ The cohort of a bead v are the siblings of v plus its sibling's
-            siblings, recursively.  This function returns a generator and should
-            be used like:
-                for c in b.cohorts():
-                    print(c) 
-        """
-        if not older: (edgef, nodef, nextgen_f) = ("out_edges","target", self.parents)
-        else:     (edgef, nodef, nextgen_f) = ("in_edges", "source", self.children)
-        ncohorts = 1
-        cohort = initial_cohort or {self.vertex(0)}
-        while True:
-            yield cohort
-            # It looks like python may be optimizing this statement somehow, so
-            # use copy() to force it to make a new set.
-            cohort = copy(self.next_generation(cohort, older) - cohort)
-            nextc = copy(cohort) # A minimal candidate for beads in the the next cohort
-            next_sibs = None     # siblings of nextc, if any
-            niter = 0
-            while True: # A loop to repeat in case the candidate cohort has siblings.
-                # Get the oldest common descendendants, which should be in the next cohort (nextc)
-                # and the set of candidate beads for this cohort (ccand)
-                # starting from the first vertices in this cohort (nextc)
-                nextc, ccand = self.common_generation(nextc, older)
-                print("nextc: ",)
-                self.printvset(nextc)
-                print("ccand: ",)
-                self.printvset(ccand)
-                cohort.update(ccand)
-                # step one generation from every bead in the cohort, removing
-                # the cohort itself and the first elements of the next cohort
-                # (nextc) to see if there are any new siblings to the current
-                # candidate cohort.
-                nextc_sibs2 = self.exclude(self.next_generation(cohort, older) -
-                        cohort - nextc, nextgen_f)
-                nextc_sibs = self.next_generation(cohort, older) - cohort.union(nextc)
-                if not nextc_sibs: break
-                print("cohort ")
-                self.printvset(cohort)
-                print("with next generation ")
-                self.printvset(self.next_generation(cohort, older) - cohort)
-                print("has siblings")
-                self.printvset(nextc_sibs)
-                self.printvset(nextc_sibs2)
-                # We have siblings, so build the next minial candidate cohort
-                nextc.update(nextc_sibs) # the candidates in the next cohort are in the
-                cohort.update(nextc_sibs)# same cohort due to a sibling, so add them.
-                niter += 1
-                if niter > 1000:
-                    raise Exception("infinite loop in cohorts? ")
-            if not cohort: 
-                self.ncohorts = ncohorts
-                return # Ends the iteration (StopIteration)
-            ncohorts += 1
-
-# Using a notion of the average cohort size, we can find cohorts in O(1) by
-# batching the parent traversals.  
-# For each bead:  
-#   Create a list of ancestors younger than the last cohort boundary, up to some depth (avg cohort size).
-#   If any bead has ALL of the previous bounary beads as ancestors, place them in a candidate list
-    def newcohorts(self, initial_cohort=None, older=False):
-         ncohorts = 1
-         cohort = initial_cohort or {self.vertex(0)}
-         boundary = copy(cohort) # a set of beads that MUST be in the next cohort
-         thisgen = copy(cohort)  # a set of beads expanded one generation at a time,
-                                 # to see of all of the boundary are ancestors.
-         lastcohort = cohort
-         cancestors = {int(x): set() for x in boundary}   # ancestors of each vertex within its cohort
-         starttime = time()
-         while True: #loop over cohorts
-             self.cohort_times.append(time()-starttime)
-             self.cohort_sizes.append(len(cohort))
-             print("============ yielding cohort = ",)
-             self.printvset(cohort)
-             yield cohort
-             print("after yielding, cohort = ",)
-             self.printvset(cohort)
-             starttime = time()
-             boundary = copy(self.next_generation(cohort, older)) - cohort
-             thisgen = copy(boundary)
-             print("boundary = ",)
-             self.printvset(boundary)
-             # It looks like python may be optimizing this statement somehow, so
-             # use copy() to force it to make a new set.
-             while True: # loop over generations
-                 thisgen = copy(self.next_generation(thisgen, older))
-                 print("thisgen = ",)
-                 self.printvset(thisgen)
-                 cohort.update(thisgen)
-                 for v in thisgen:
-                     prevgen = copy(self.next_generation(v, not older))
-                     print("prevgen of %d = "%int(v),)
-                     self.printvset(prevgen)
-                     for p in prevgen:
-                         if not (p in cancestors): 
-                             print("%d is not in cancestors"%int(p))
-                             cancestors[p] = set()
-                     cancestors[v] = prevgen.union(*[cancestors[v] for v in prevgen])
-                     #print("cancestors = ", cancestors)
-                 if all([b in cancestors[v] for b in boundary for v in thisgen]):
-                     if thisgen: 
-                         cohort = set.intersection(*[cancestors[v] for v in thisgen]) - lastcohort
-                         lastcohort = cohort
-                     else: return # we didn't find a complete cohort and have dangling tips
-                     break
-# FIXME infinite loop in termination case here
-# FIXME we're returning
-             ncohorts += 1
-
-    def oldcohorts(self, initial_cohort=None, older=False):
-         ncohorts = 1
-         cohort = initial_cohort or {self.vertex(0)}
-         starttime = time()
-         while True:
-             cohort_size_benchmark.append((len(cohort), time()-starttime))
-             yield cohort
-             starttime = time()
-             # It looks like python may be optimizing this statement somehow, so
-             # use copy() to force it to make a new set.
-             cohort = copy(self.next_generation(cohort, older) - cohort) # find a set of beads in the next cohort
-             nextgen = copy(cohort)                                      # tracks on generation by parent/child edges
-             lastcgen = set()
-             while True: # Add beads to the cohort one generation at a time
-                 # We must compute the oldest common descendant/youngest common
-                 # ancestor with each iteration because it's possible that the
-                 # oldest common descendant is a sibling with another child.
-                 cgen =  self.common_generation(cohort, older)   # Find a set of beads that are ancestors/descendants 
-                 cohort.update(lastcgen - cgen)                  # of every bead in the cohort
-                 nextgen = self.next_generation(nextgen.union(lastcgen-cgen), older) - cgen # Step one more generation
-                 if not nextgen: break
-                 cohort.update(nextgen)
-                 lastcgen = cgen
-             if not cohort: 
-                 self.ncohorts = ncohorts
-                 return # Ends the iteration (StopIteration)
-             ncohorts += 1
-
     def cohorts(self, initial_cohort=None, older=False):
         # given the seed of the next cohort (which is the set of beads one step
         # older, in the next cohort), build an ancestor and descendant set for
@@ -468,26 +348,24 @@ class Braid(gt.Graph):
         lastgen     = cohort
         head        = cohort
         self.ncohorts = 0
+        self.cohort_cache = []
         # on each new visited bead, see if it is in the descendant set for all
         # beads in the head.
         while True :
-#            print("========= Yielding=========: ",printvset(cohort))
             self.ncohorts += 1
+            self.cohort_cache.append(cohort)
             yield cohort
             head        = self.next_generation(cohort, older) - cohort
-#            print("Head:     ",printvset(head))
             ancestors   = {h: frozenset() for h in head}
             parents     = ancestors
             lastgen     = head
             while True :
                 thisgen = self.next_generation(lastgen, older)
                 if not thisgen: return # Ends the iteration (StopIteration)
-#                print("thisgen:  ",printvset(thisgen))
                 for v in thisgen:
                     parents[v] = self.next_generation(v, not older)
                     if all([p in ancestors for p in parents[v]]):
                         ancestors[v] = parents[v].union(*[ancestors[p] for p in parents[v]])
-    
                 if(all([p in ancestors] for p in frozenset.union(*[parents[v] for v in thisgen]))# we have no missing ancestors
                     and all([h in ancestors[v] for h in head for v in thisgen])):                  # and everyone has all head beads as ancestors
                     cohort = frozenset.intersection(*[ancestors[v] for v in thisgen])
@@ -496,8 +374,6 @@ class Braid(gt.Graph):
                     if all([p in ancestors[n] for n in nexthead for p in tail]):
                         break
                 lastgen = thisgen
-#                for v in ancestors:
-#                    print("\t%3d has ancestors: "%int(v), printvset(ancestors[v]))
 
     def cohort_time(self):
         """ Compute the average cohort time and its standard deviation returned
@@ -636,6 +512,7 @@ class Braid(gt.Graph):
             # the reward
             self.rewards(400)
             for v in self.vertices():
+                print(v)
                 self.vsizes[v] = sqrt(self.beads[int(v)].reward)
         if output: kwargs['output'] = output
         if focusbead:
