@@ -14,8 +14,7 @@ import graph_tool.draw as gtdraw
 import numpy as np
 from numpy.random import choice, sample, randint
 from copy import copy
-from math import sqrt
-from time import time
+from math import sqrt, pi, sin, cos, acos
 
 NETWORK_SIZE = 1.0  # The round-trip time in seconds to traverse the network
 TICKSIZE = 0.1      # One "tick" of the network in which beads will be propagated and mined
@@ -49,12 +48,25 @@ def printvset(vs):
     """ Print a (sub-)set of vertices in compact form. """
     return("{"+",".join(sorted([str(v) for v in vs]))+"}")
 
+def sph_arclen(n1, n2):
+    """ Compute the arc length on the surface of a unit sphere. """
+    # phi = 90 - latitude
+    phi1 = (90.0 - n1.latitude)*pi/180.0
+    phi2 = (90.0 - n2.latitude)*pi/180.0
+
+    # theta = longitude
+    theta1 = n1.longitude*pi/180.0
+    theta2 = n2.longitude*pi/180.0
+
+    c = sin(phi1)*sin(phi2)*cos(theta1-theta2) + cos(phi1)*cos(phi2)
+    return acos(c)
+
 class Network:
     """ Abstraction for an entire network containing <n> nodes.  The network has
         a internal clock for simulation which uses <ticksize>.  Latencies are taken
         from a uniform distribution on [0,1) so <ticksize> should be < 1.
     """
-    def __init__(self, nnodes, ticksize=TICKSIZE, npeers=4, target=None):
+    def __init__(self, nnodes, ticksize=TICKSIZE, npeers=4, target=None, topology='sphere'):
         self.t = 0       # the current "time"
         self.ticksize = ticksize # the size of a "tick": self.t += self.tick at each step
         self.npeers = npeers
@@ -68,13 +80,16 @@ class Network:
 # FIXME not modelling mempool propagation means that we will either have all blocks in a round have
 # the same tx, or none.  Maybe each round mining should grab a random subset?
         self.nodes = [Node(self.genesis, self, nodeid, target=target) for nodeid in range(nnodes)]
+        latencies = None
         for (node, peers) in zip(self.nodes, [choice(list(set(range(nnodes)) - {me}),  \
                 npeers, replace=False) for me in range(nnodes)]):
             #print("Node ", node, " has peers ", peers)
-            node.setpeers([self.nodes[i] for i in peers])
+            if topology == 'sphere':
+                latencies = [10*sph_arclen(node, self.nodes[i]) for i in peers];
+            node.setpeers([self.nodes[i] for i in peers], latencies)
         self.reset(target=target)
 
-    def tick(self, mine=False):
+    def tick(self, mine=True):
         """ Execute one tick. """
         self.t += self.ticksize
 
@@ -125,6 +140,9 @@ class Node:
         self.nodesalt = uint256(sha256(randint(2**63-1))) 
         self.nonce = 0      # Will be increased in the mining process
         self.reset(target)
+        # Geospatial location information
+        self.latitude  = pi*(1/2-sample(1))
+        self.longitude = 2*pi*sample(1)
 
     def reset(self, target=None):
         self.beads = [self.network.beads[self.network.genesis]]     # A list of beads in the order received
@@ -157,7 +175,8 @@ class Node:
                         newincoming.add(bead)
             self.incoming = newincoming
         if mine:
-            PoW = uint256(sha256(self.nodesalt+self.nonce))
+            #PoW = uint256(sha256(self.nodesalt+self.nonce))
+            PoW = uint256(sha256(np.random.randint(1<<64-1)*np.random.randint(1<<64-1)))
             self.nonce += 1
             if PoW < self.target:
                 b = Bead(PoW, copy(self.braids[0].tips), copy(self.mempool), self.network, self.nodeid)
