@@ -341,7 +341,7 @@ class Braid(gt.Graph):
                     retval[int(s),int(c)] = (m,n)
         return retval
 
-    def cohorts(self, initial_cohort=None, older=False):
+    def cohorts(self, initial_cohort=None, older=False, cache=False):
         """ Given the seed of the next cohort (which is the set of beads one step older, in the next
             cohort), build an ancestor and descendant set for each visited bead.  A new cohort is
             formed if we encounter a set of beads, stepping in the descendant direction, for which
@@ -354,7 +354,7 @@ class Braid(gt.Graph):
         cohort      = head = nexthead = initial_cohort or frozenset([self.vertex(0)])
         parents     = ancestors = {h: self.next_generation(h, not older) - cohort for h in head}
         ncohorts = 0
-        if not hasattr(self, 'cohort_cache'):
+        if cache and not hasattr(self, 'cohort_cache'):
             self.cohort_cache = []
             self.sibling_cache = {}
             # These caches also contain the first beads *outside* the cohort in both the
@@ -362,20 +362,21 @@ class Braid(gt.Graph):
             self.ancestor_cache = {}   # The ancestors of each bead, *within* their own cohort
             self.descendant_cache = {} # The descendants of each bead, *within* their own cohort
         while True :
-            if ncohorts in self.cohort_cache:
+            if cache and ncohorts in self.cohort_cache:
                 yield self.cohort_cache[ncohorts]
             else:
-                acohort = cohort.union(self.next_generation(head, older))  # add the youngest beads in the ancestor cohort
-                ancestors = {int(v): frozenset(map(int,
-                    self.ancestors(v, acohort))) for v in acohort}
-                self.ancestor_cache[ncohorts] = ancestors
-                dcohort = cohort.union(self.next_generation(head, not older)) # add the oldest beads in the descendant cohort
-                descendants = {int(v): frozenset(map(int,
-                    self.descendants(v, dcohort))) for v in dcohort}
-                self.descendant_cache[ncohorts] = descendants
-                self.cohort_cache.append(cohort)
-                self.sibling_cache[ncohorts] = {v: cohort - ancestors[v] - descendants[v] -
-                        frozenset([v]) for v in cohort}
+                if cache:
+                    acohort = cohort.union(self.next_generation(head, older))  # add the youngest beads in the ancestor cohort
+                    ancestors = {int(v): frozenset(map(int,
+                        self.ancestors(v, acohort))) for v in acohort}
+                    self.ancestor_cache[ncohorts] = ancestors
+                    dcohort = cohort.union(self.next_generation(head, not older)) # add the oldest beads in the descendant cohort
+                    descendants = {int(v): frozenset(map(int,
+                        self.descendants(v, dcohort))) for v in dcohort}
+                    self.descendant_cache[ncohorts] = descendants
+                    self.cohort_cache.append(cohort)
+                    self.sibling_cache[ncohorts] = {v: cohort - ancestors[v] - descendants[v] -
+                            frozenset([v]) for v in cohort}
                 yield cohort
             ncohorts += 1
             gen         = head      = nexthead
@@ -394,10 +395,10 @@ class Braid(gt.Graph):
                     if oldancestors == {v: ancestors[v] for v in gen}: break
                 if(all([p in ancestors] for p in frozenset.union(*[parents[v] for v in gen]))# we have no missing ancestors
                     and all([h in ancestors[v] for h in head for v in gen])):                  # and everyone has all head beads as ancestors
-                    cohort = frozenset.intersection(*[ancestors[v] for v in gen])
+                    cohort = frozenset.intersection(*[ancestors[v] for v in gen])          # We found a new cohort
                     nexthead = self.next_generation(cohort, older) - cohort
                     tail = self.next_generation(nexthead, not older)                         # the oldest beads in the candidate cohort
-                    if all([p in ancestors[n] for n in nexthead for p in tail]):
+                    if all([n in ancestors and p in ancestors[n] for n in nexthead for p in tail]):
                         break
 
     def cohort_time(self):
@@ -520,6 +521,8 @@ class Braid(gt.Graph):
                     self.vsizes[v] = 0
         if output: kwargs['output'] = output
         if focusbead:
+            if not hasattr(self, 'sibling_cache'):
+                for c in self.cohorts(cache=True): pass
             ancestors   = self.ancestors(focusbead)
             descendants = self.descendants(focusbead)
             kwargs['vertex_halo_size'] = 1.5
