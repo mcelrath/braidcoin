@@ -173,6 +173,119 @@ higher-work block in the DAG.
 
 # Payout Commitment
 
+The Payout Commitment is the coinbase output on bitcoin, containing all funds
+from the block reward and fees in this block. This payout must commit to the
+share payout structure as calculated at the time the block is mined.  In other
+words, it must represent and commit to the consensus of the decentralized mining
+pool's share accounting.
+
+Validating the output of the [consensus mechanism](#consensus-mechanism) is well
+beyond the capability of bitcoin script. Therefore generally one must find a
+mechanism such that a supermajority (Byzantine Fault Tolerant subset) of
+braidpool participants can sign the output, which is essentially reflecting the
+consensus about share payments into bitcoin.
+
+## The Unspent Hasher Payment Output (UHPO) mechanism
+
+For the payout commitment we present a new and simple record accounting for
+shares. Consider the consensus mechanism as a UTXO-based blockchain analagous to
+bitcoin. The "UTXO set" of the consensus mechanism is the set of payment outputs
+for all hashers, with amounts decided by the recorded shares and consensus
+mechanism rules.
+
+We will term the set of hasher payments the Unspent Hasher Payment Output (UHPO)
+set. This is the "UTXO set" of the decentralized mining pool, and calculation
+and management of the UHPO set is the primary objective of the decentralized
+mining pool.
+
+The UHPO set can be simply represented as a transaction which has as inputs all
+unspent coinbases mined by the pool, and one output for each unique miner with
+an amount decided by his share contributions subject to the consensus mechanism
+rules.
+
+In p2pool this UHPO set was placed directly in the coinbase of every block,
+resulting in a large number of very small payments to hashers. One advantage of
+traditional pools is that the *aggregate* these payments over multiple blocks so
+that the number of withdrawals per hasher is reduced. A decentralized mining
+pool should do the same. The consequence of this was that in p2pool, the large
+coinbase with small outputs competed for block space with fee-paying
+transactions.
+
+The commitment to the UHPO set in the coinbase output is a mechanism that allows
+all hashers to be correctly paid if the decentralized mining pool shuts down or
+fails after this block. As such, the UHPO set transaction(s) must be properly
+formed, fully signed and valid bitcoin transactions that can be broadcast. See
+[Payout Authorization](#payout-authorization) for considerations on how to
+sign/authorize this UHPO transaction.
+
+We don't ever want to actually have to broadcast this UHPO set transaction
+except in the case of pool failure. Similar to other optimistic protocols like
+Lightning, we will withhold this transaction from bitcoin and update it
+out-of-band with respect to bitcoin. With each new block we will update the UHPO
+set transaction to account for any new shares since the last block mined by the
+pool.
+
+Furthermore a decentralized mining pool should support "withdrawal" by hashers.
+This would take the form of a special message or transaction sent to the pool
+(and agreed by consensus within the pool) to *remove* a hasher's output from the
+UHPO set transaction, and create a new separate transaction which pays that
+hasher, [authorizes](#payout-authorization) it, and broadcasts it to bitcoin.
+
+## Pool Transactions and Derivative Instruments
+
+If the decentralized mining pool supports transactions of its own, one could
+"send shares" to another party. This operation replaces one party's address in
+the UHPO set transaction with that of another party. In this way unpaid shares
+can be delivered to an exchange, market maker, or OTC desk in exchange for
+immediate payment (over Lightning, for example) or as part of a derivatives
+contract.
+
+The reason that delivery of shares can constitute a derivative contract is that
+they are actually a measurement of *hashrate* and have not yet settled to
+bitcoin. While we can compute the UHPO set at any point and convert that to
+bitcoin outputs given the amount of bitcoin currently mined by the pool, there
+remains uncertainty as to how many more blocks the pool will mine before
+settlement is requested, and how many fees those blocks will have.
+
+A private arrangement can be created where one party *buys future shares* from
+another in exchange for bitcoin up front. This is a *futures* contract, where
+the counterparty to the miner is taking on pool "luck" risk and fee rate risk.
+
+In order to form hashrate derivatives, it must be posible to deliver shares
+across two different difficulty adjustment windows. Shares in one difficulty
+adjustment window have a different value compared to shares in another window,
+due to the difficulty adjustment itself. If one can compute the derivative
+\[
+    \frac{d({\rm hashrate})}{d({\rm BTC}) = \frac{d_1-d_2}{BTC_1 - BTC_2}
+\]
+then derivative instruments such as options and futures can be constructed by
+private contract, where shares from different difficulty adjustment epochs are
+delivered to the derivative contract counterparty in exchange for BTC, possibly
+with time restrictions. We do not describe further how to achieve this, here we
+are only pointing out that the sufficient condition for the decentralized mining
+pool to support private contract derivative instruments are:
+
+1. The ability to send shares to another party
+2. The ability to settle shares into BTC at a well defined point in time with
+   respect to the difficulty adjustment (for instance after the adjustment, for
+   the previous epoch)
+3. The ability transact shares across two difficulty adjustment windows.
+
+It may be tempting to turn a decentralized mining pool into a full DeFi market
+place with an order book. We caution that the problem of Miner Extractable Value
+(MEV) is a serious one that destroys fairness and confidence in the system, and
+should be avoided here. The only operations we consider here are (a) sending
+shares to another party and (b) requesting payout in BTC for shares.
+
+Finally let us note that the value of a "share" is naturally fixed after each
+difficulty adjustment. Within one two-week difficulty adjustment window, each
+sha256d hash attempt has a fixed value in terms of BTC, but the exact amount of
+BTC is unknown until the next difficulty adjustment. Therefore, the 2-week
+difficulty adjustment window is a natural point to automatically broadcast the
+UHPO tree for the last epoch and settle out all shares from the previous epoch.
+
+# Payout Authorization
+
 # Unsolved Problems
 
 
