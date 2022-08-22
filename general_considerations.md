@@ -18,13 +18,11 @@ A decentralized mining pool consists of the following components:
    valid bitcoin blocks.
 
 The improvements being made by the
-[StratumV2](https://github.com/stratum-mining/sv2-spec) project include
-transaction selection and encrypted communication to mining devices. These
-problems are important largely factorizable from the pool itself. StratumV2 is
-solving the problem of decentralizing transaction selection while a
-decentralized mining pool would already have decentralized transaction selection
-and additionally solve the problem of decentralized and trustless payment for
-shares.
+[StratumV2](https://github.com/stratum-mining/sv2-spec) project also include
+encrypted communication to mining devices. These problems are important largely
+factorizable from the pool itself, so we won't include discussion of that here,
+but it is assumed that any decentralized mining pool would use the StratumV2
+communications mechanisms.
 
 # Weak Blocks
 
