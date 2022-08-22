@@ -14,6 +14,8 @@ A decentralized mining pool consists of the following components:
 4. A [signing procedure](#signing-procedure) for signing the [payout
    commitment](#payout-commitment) in such a way that the pool participants are
    properly paid.
+5. A [transaction selection](#transaction-selection) mechanism for building
+   valid bitcion blocks.
 
 In addition to this there are improvements being made by the
 [StratumV2](https://github.com/stratum-mining/sv2-spec) project which include
@@ -286,8 +288,139 @@ UHPO tree for the last epoch and settle out all shares from the previous epoch.
 
 # Payout Authorization
 
-# Unsolved Problems
+In [Payout Commitment](#payout-commitment) we described a simple mechansim to
+represent shares and share payouts as decided by the [Consensus
+Mechansim](#consensus-mechansim) on shares at any point in time.  However,
+bitcoin is incapable of evaluating the logic of the pool's consensus mechanism
+and we must find a simpler way to represent that share payout consensus to
+bitcoin, such that the coinbase outputs cannot be spent in any other way than as
+decided by the pool's consensus.
+
+Probably the most straightforward way to authorize the share payouts and signing
+of coinbase outputs is to use a large threshold multi-signature. The set of
+signers can be any pool participant running the pool's consensus mechanism and
+having availability of all data to see that consensus mechanism's chain tip. We
+assume that in the [weak block](#weak-blocks) metadata, the pool participants
+include a pubkey with which they will collaboratively sign the payout
+authorization.
+
+The most logical set of signers to authorize the coinbase spends are the set of
+miners who have already successfully mined a bitcoin block. We want to avoid
+having any single miner having unilateral control over a coinbase and the
+ability to steal the funds without paying other hashers. As such the minimum
+number of signers is four, using the $(3f+1)$ rule from the Byzantine agreement
+literature. This means that on pool startup, the first 4 blocks must be directly
+and immediately paid out to hashers, as there are not enough known parties to
+sign a multi-signature, and we don't even know their pubkeys to construct a
+(P2TR, P2SH, etc) bitcoin output address and scriptPubKey.
+
+After the first 4 blocks, we assume that 66%+1 miners who have previously mined
+a block must sign the coinbase output(s), paying into the UHPO set transaction.
+
+This is probably the biggest unsolved problem in building a decentralized mining
+pool -- how to coordinate a large number of signers. If we assume that shares
+are paid out onto bitcoin with every difficulty adjustment, this is 2048 blocks
+and up to 1366 signers that must collaborate to make a threshold
+multi-signature. This is a very large number and generally well beyond the
+capabilities of available signing algorithms such as
+[FROST](https://eprint.iacr.org/2020/852),
+[ROAST](https://eprint.iacr.org/2022/550),
+[MP-ECDSA](https://eprint.iacr.org/2017/552), or [Lindell's threshold
+Schnorr](https://eprint.iacr.org/2022/374)
+algorithm.
+
+Below we discuss threshold Schnorr in more detail, but this may not be the only
+way to commit to and then authorize spending of coinbases into the UHPO tree. We
+encourage readers to find alternative solutions to this problem. The very large
+drawback to all signing algorithms we are able to find is that they are
+intolerant to failures.
+
+## Schnorr Threshold Signatures
+
+We have reviewed a large amount of literature on threshold Schnorr algorithms.
+
+They all generally involve a Distributed Key Generation (DKG) phase using a
+variant of [Pedersen's
+DKG](https://link.springer.com/chapter/10.1007/3-540-46766-1_9), often
+augmenting it with polynomial commitments introduced by Feldman to achieve a
+[Verifiable Secret Sharing scheme
+(VSS)](https://ieeexplore.ieee.org/document/4568297). There are many papers with
+variations on this idea, each focusing on organizing rounds of communication,
+assumptions about communication (such as whether a broadcast channel exists) and
+security proofs.
+
+Participants in the threshold signature each contribute entropy in the DKG phase
+by creating and secret sharing their contribution to all other participants. In
+this way a key can be created with entropy input from all participants, such
+that no participant knows the key, but at the end of the DKG, all participants
+hold shares of it such that a t-of-n threshold number of shares must be Lagrange
+interpolated to reconstruct the secret.
+
+These secret shares are then used to compute a signature. Instead of directly
+reconstructing the secret key (which would give unilateral spending control to
+the party doing the reconstruction) one computes the signature using the
+secret share as the private key, and then Lagrange interpolation is performed on
+the resulting set of signatures instead.
+
+Both ECDSA and Schnorr signatures require a nonce $k$ which must additionally be
+agreed upon by the signing participants before signing, and is committed to in
+the signature itself. This is generally done by running an additional round of
+the DKG to compute $k$ such that everyone has a secret share of it.
+
+### Distributed Key Generation
+
+# Transaction Selection
+
+The Stratum V2 project is focusing on a model where hashers are responsible for
+constructing the block and selecting transactions. This is an improvement over
+Stratum V1 where the (centralized) pool chooses the block and transactions.
+
+The risk here is that the pool either censors valid transactions at the
+direction of a government entity, or prioritizes transactions through
+out-of-band payment, risking the "censorship resistant" property of the system.
+
+In the [Weak Blocks](#weak-blocks) section we did not indicate how transaction
+selection was done. This is a factorizable problem, and for a decentralized
+mining pool we also assume that individual hashers are constructing blocks, and
+the pool places no further restrictions on the transaction content of a block
+mined by a participating hasher. In fact, for weak blocks which do not meet
+bitcoin's difficulty threshold, it is probably best to elide the transaction set
+entirely for faster verification of shares. This introduces a problem that a
+hasher could construct a block with invalid transactions, but this would be
+easily discovered if that hasher ever mined a block, and his shares could
+invalidated.
+
+A transaction selection mechanism using both a decentralized mining pool and
+Stratum V2 should be able to easily slot into the block structure required by
+the decentralized mining pool as indicated in [weak blocks](#weak-blocks), as
+long as Stratum V2 is tolerant of the required coinbase and metadata structure.
+
+In our opinion simply allowing hashers to do transaction selection is
+insufficient, as centralized pools can simply withhold payment unless hashers
+select transactions according to the rules dictated by the pool. A full solution
+that restores bitcoin's censorship resistance requires decentralized payment as
+well.
+
+# Unsolved Problems and Future Directions
+
+The largest unsolved problem here is that of the [Payout
+Authorization](#payout-authorization). While off-the-shelf algorithms are
+available such as [ROAST](https://eprint.iacr.org/2022/550), they require fixing
+the set of signers and are intolerant to failure in either the nonce generation
+phase, the signing phase, or both. A threshold number of participants must be
+chosen, and must *all* remain online through the keygen and signing phase. If
+any participant fails, a different subset must be chosen and the process
+restarted. There does exist an approach which makes the final signature
+aggregation asynchronous assuming the nonce generation was successful.
+
+The fact that both ECDSA and Schnorr signatures require a nonce $k$ is a big
+drawback requiring an additional keygen round with everyone online that other
+systems such as BLS do not have.
+
+In practice if no new algorithm is found and an existing Schnorr threshold
+signature is used (something involving a DKG and Shamir sharing)
+
+, and other systems such as Avalance and DFinity are able to
 
 
-this is
- a
+## Covenants
