@@ -155,7 +155,8 @@ mining.
 While a 600x decrease in variance is a worthy goal, this is not enough of an
 improvement to allow a single modern mining device to reduce its variance enough
 to be worthwhile. Therefore, a different solution must be found for miners
-smaller than a certain hashrate.
+smaller than a certain hashrate. We present some ideas in
+[Sub-Pools](#sub-pools).
 
 From our perspective, the obvious choice for a consensus algorithm is a DAG
 which re-uses bitcoin's proof of work in the same spirit as bitcoin itself --
