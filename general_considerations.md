@@ -3,24 +3,24 @@ surrounding "decentralized mining pools" for bitcoin, their requirements, and
 some unsolved problems that must be solved before such a thing can be fully
 specified.
 
-# Decentralized mining pools for bitcoin
+# Decentralized Mining Pools for Bitcoin
 
 A decentralized mining pool consists of the following components:
-1. A [weak block](#weak-blocks) and difficulty target mechanism
+1. A [weak block](#weak-blocks) and difficulty target mechanism,
 2. A [consensus mechanism](#consensus-mechanism) for collecting and accounting
-   for shares
+   for shares,
 3. A [payout commitment](#payout-commitment) requiring a quorum of participants
-   to sign off on share payments
+   to sign off on share payments,
 4. A [signing procedure](#signing-procedure) for signing the [payout
    commitment](#payout-commitment) in such a way that the pool participants are
-   properly paid.
+   properly paid,
 5. A [transaction selection](#transaction-selection) mechanism for building
-   valid bitcion blocks.
+   valid bitcoin blocks.
 
-In addition to this there are improvements being made by the
-[StratumV2](https://github.com/stratum-mining/sv2-spec) project which include
+The improvements being made by the
+[StratumV2](https://github.com/stratum-mining/sv2-spec) project include
 transaction selection and encrypted communication to mining devices. These
-problems are important but factorizable from the pool itself. StratumV2 is
+problems are important largely factorizable from the pool itself. StratumV2 is
 solving the problem of decentralizing transaction selection while a
 decentralized mining pool would already have decentralized transaction selection
 and additionally solve the problem of decentralized and trustless payment for
@@ -371,9 +371,10 @@ the DKG to compute $k$ such that everyone has a secret share of it.
 
 # Transaction Selection
 
-The Stratum V2 project is focusing on a model where hashers are responsible for
-constructing the block and selecting transactions. This is an improvement over
-Stratum V1 where the (centralized) pool chooses the block and transactions.
+The [Stratum V2](https://github.com/stratum-mining/sv2-spec) project is focusing
+on a model where hashers are responsible for constructing the block and
+selecting transactions. This is an improvement over Stratum V1 where the
+(centralized) pool chooses the block and transactions.
 
 The risk here is that the pool either censors valid transactions at the
 direction of a government entity, or prioritizes transactions through
@@ -410,17 +411,59 @@ the set of signers and are intolerant to failure in either the nonce generation
 phase, the signing phase, or both. A threshold number of participants must be
 chosen, and must *all* remain online through the keygen and signing phase. If
 any participant fails, a different subset must be chosen and the process
-restarted. There does exist an approach which makes the final signature
-aggregation asynchronous assuming the nonce generation was successful.
+restarted. There does exist an [approach due to Joshi et
+al](https://link.springer.com/chapter/10.1007/978-3-031-08896-4_4) at the cost
+of an extra preprocessing step, which makes the final signature aggregation
+asynchronous assuming the nonce generation was successful, though the setup
+phases are still intolerant to failure.
 
 The fact that both ECDSA and Schnorr signatures require a nonce $k$ is a big
 drawback requiring an additional keygen round with everyone online that other
 systems such as BLS do not have.
 
 In practice if no new algorithm is found and an existing Schnorr threshold
-signature is used (something involving a DKG and Shamir sharing)
+signature is used (something involving a DKG and Shamir sharing), a balance must
+be struck between having so many signers that payouts cannot be signed in a
+reasonable time, and so few signers that the system is insecure and coinbases
+could be stolen by a small subset.
 
-, and other systems such as Avalance and DFinity are able to
-
+An approach that might be considered is to sub-sample the set of signers, and
+somehow aggregate signatures from subsets. As the resultant signatures would
+have different nonces, they cannot be straightforwardly aggregated, but this is
+the same problem as aggregating different signatures within a transaction or
+block, and approaches to [Cross Input Signature Aggregation
+(CISA)](https://github.com/ElementsProject/cross-input-aggregation) might be
+used here and might indicate the desirability of a future soft fork in this
+direction.
 
 ## Covenants
+
+One might take the UHPO set transaction and convtert it to a tree structure,
+using covenants to enforce the structure of the tree in descendant transactions.
+This is often done in the context of covenant-based soft fork proposals so that
+one party can execute his withdrawal while not having to force everyone else to
+withdraw at the same time.
+
+Because a decentralized mining pool is an active online system, it seems better
+to use an interactive method to write a new transaction for a withdrawal, than
+to allow broadcasting part of a tree. If part of a tree were broadcast, this
+must also be noticed by all miners and the share payouts updated.
+
+In our opinion the only reason the whole UHPO set transaction(s) would be
+broadcast is in a failure mode or shutdown of the pool, in which case the tree
+just increases the on-chain data load for no benefit.
+
+## Sub-Pools
+
+Since a consensus system cannot achieve consensus faster than the global
+latency, this is an improvement in share size of at most about 1000x. In order
+to support even smaller hashers, one might consider "chaining" the decentralized
+mining pool to create a sub-pool.
+
+Instead of coinbase UTXOs as inputs to its UHPO set, a sub-pool would have UHPO
+set entries from a parent pool as entries in its UHPO set. With a separate
+consensus mechanism from its parent, a chain of two decentralized mining pools
+could allow hashers 1000000x smaller to participate. A pool could in principle
+dynamically create and destroy sub-pools, moving miners between the sub-pools
+and main pool dependent on their observed hashrate, so as to target a constant
+variance for all hashers.
