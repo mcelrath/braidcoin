@@ -318,8 +318,8 @@ a block must sign the coinbase output(s), paying into the UHPO set transaction.
 
 This is probably the biggest unsolved problem in building a decentralized mining
 pool -- how to coordinate a large number of signers. If we assume that shares
-are paid out onto bitcoin with every difficulty adjustment, this is 2048 blocks
-and up to 1366 signers that must collaborate to make a threshold
+are paid out onto bitcoin with every difficulty adjustment, this is 2016 blocks
+and up to 1345 signers that must collaborate to make a threshold
 multi-signature. This is a very large number and generally well beyond the
 capabilities of available signing algorithms such as
 [FROST](https://eprint.iacr.org/2020/852),
