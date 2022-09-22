@@ -264,8 +264,8 @@ $$
 where
 
 $$
-\lambda = \frac{T_C}{\rm block time} \left(\frac{\rm pool hashrate}{\rm total
-hashrate}\right)
+\lambda = \frac{T_C}{\rm block time} \left(\frac{\rm pool\ hashrate}{\rm total
+\ hashrate}\right)
 $$
 
 Therefore shares within a cohort containing 2 or more beads must be weighted by
@@ -617,7 +617,7 @@ well.
 ## Coinbaes Theft by Large Miners
 
 Because signing very large threshold Schnorr outputs is impractical, it is
-necessary to keep the number of signers $n$ of the $t$-of-$n$ UHPO root output
+necessary to keep the number of signers $n$ of the t-of-n UHPO root output
 relatively small, so as to complete the signature in a reasonable amount of time
 and without consuming too much bandwidth or computation.
 
@@ -625,7 +625,7 @@ Therefore there exists the possibility that just due to luck, the same (large)
 miner might mine all $n$ of the most recent blocks, or that two miners who
 together mine all $n$ of the most recent blocks collude. In this case
 
-The UHPO root must be signed by $t$-of-$n$ of the most recent *distinct* miners
+The UHPO root must be signed by t-of-n of the most recent *distinct* miners
 who successfully mined bitcoin blocks.
 
 We might also consider including hashers who have not won bitcoin blocks. In
