@@ -241,6 +241,30 @@ descendant work *within* a cohort.
 
 ### Share Reward Algorithm
 
+A great many [share payout
+algorithms](https://medium.com/luxor/mining-pool-payment-methods-pps-vs-pplns-ac699f44149f)
+have been proposed and used by pools. Because braidpool will not collect fees
+and has no source of funds other than block rewards with which pay hashers, it
+will use the Full Proportional. Closely related methods like Pay Per Share (PPS)
+and PPS+ allow the pool operator to earn the fees, but there is no entity which
+could/should be earning these fees for a decentralized mining pool. While many
+projects have inserted a "developer donation", we feel that braidpool is an open
+source public good that should be developed and maintained by the community,
+without the political drama of who and how to pay with a source of funds.
+
+With FPPS most centralized pool operators are taking a risk on paying
+immediately for shares, therefore absorbing the variance risk involved in
+"luck". For hashers that desire immediate payout this can be achieved using any
+third party willing to buy their shares and take on the risk management of
+"luck" and fee variance. It's not necessary or desirable for braidpool itself to
+subsume this risk management function. It is logical to allow professional risk
+management firms to take it on by directly buying shares.
+
+Other payout algorithms such as Pay Per Last N Shares (PPLNS) were created
+primarily to discourage pool hopping. We don't feel that this is needed in the
+modern day and a smoothing function applied to payouts interferes with the
+notion of using shares as a hashrate derivative instrument.
+
 We will use the Proportional algorithm for rewards, which divides rewards
 (including fees) within a difficulty adjustment epoch proportionally among
 submitted work-weighted shares.
@@ -280,39 +304,14 @@ that he generates an orphan and reduces the profit of the pool.
 
 ### Difficulty Retarget Algorithm
 
+See [Braid Retargeting
+Algorithm](https://rawgit.com/mcelrath/braidcoin/master/Braid%2BExamples.html)
 
 ### Miner Selected Difficulty
 
 Within the Braid we wish to allow different miners to select their difficulty
 and to target for constant *variance* among miners by allowing a small miner to
 use a lower difficulty than a larger miner.
-
-## Share Payout Algorithm
-
-A great many [share payout
-algorithms](https://medium.com/luxor/mining-pool-payment-methods-pps-vs-pplns-ac699f44149f)
-have been proposed and used by pools. Because braidpool will not collect fees
-and has no source of funds other than block rewards with which pay hashers, it
-will use the Full Pay Per Share (FPPS) method. Closely related methods like Pay
-Per Share (PPS) and PPS+ allow the pool operator to earn the fees, but there is
-no entity which could/should be earning these fees for a decentralized mining
-pool. While many projects have inserted a "developer donation", we feel that
-braidpool is an open source public good that should be developed and maintained
-by the community, without the political drama of who and how to pay with a
-source of funds.
-
-With FPPS most centralized pool operators are taking a risk on paying
-immediately for shares, therefore absorbing the variance risk involved in
-"luck". For hashers that desire immediate payout this can be achieved using any
-third party willing to buy their shares and take on the risk management of
-"luck" and fee variance. It's not necessary or desirable for braidpool itself to
-subsume this risk management function. It is logical to allow professional risk
-management firms to take it on by directly buying shares.
-
-Other payout algorithms such as Pay Per Last N Shares (PPLNS) were created
-primarily to discourage pool hopping. We don't feel that this is needed in the
-modern day and a smoothing function applied to payouts interferes with the
-notion of using shares as a hashrate derivative instrument.
 
 # Payout Commitment
 
