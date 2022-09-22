@@ -1,7 +1,3 @@
-I'm writing this post to help organize and clarify some of the thought
-surrounding "decentralized mining pools" for bitcoin, their requirements, and
-some unsolved problems that must be solved before such a thing can be fully
-specified.
 
 # Decentralized Mining Pools for Bitcoin
 
@@ -172,6 +168,122 @@ miners, one must not violate the "progress-free" characteristic of bitcoin. That
 is, one should not sum work from a subset of smaller miners to arrive at a
 higher-work block in the DAG.
 
+## Braid
+
+The consensus algorithm we choose is inspired by simply extending Nakamoto
+consensus to a Directed Acyclic Graph. We call nodes in this DAG "beads" and the
+overall structure a "braid" so as to distinguish it from the bitcoin blocks and
+chain. Some of the beads in the DAG are bitcoin blocks.
+
+We call this structure a "braid" because it contains an extra restriction
+relative to a general DAG: beads must not name as parents other beads which are
+ancestors of another parent. Naming a parent that is an ancestor of another
+parent conveys no useful information, since ancestors of each parent are already
+considered when ordering the DAG and including transactions. Visually this means
+that a braid will never have triangles or some other higher order structures.
+
+A DAG can be totally ordered in linear time using either [Kahn's
+algorithm](https://dl.acm.org/doi/10.1145/368996.369025) or a modified
+depth-first search which terminates when a bead is found that is a common
+ancestor to all of a bead's parents, which defines a "graph cut" and a point of
+global consensus on all ancestors. We define the set of beads between two graph
+cuts to be a "cohort". Within a cohort it is not possible to total order the
+contained beads using graph structure alone. The cohort can be defined as a set
+of beads having the same set of oldest common descendants and youngest common
+ancestors.
+
+It should be noted that within a braid we keep *all* beads with a valid PoW,
+regardless of whether they are considered invalid in other ways, or contain
+conflicting transactions. Transaction conflict resolution within the Braid is
+decided by the [Work Weighting Algorithm](#work-weighting-algorithm) and doing
+so requires retaining both sides of the conflict. It is generally possible for
+new work to change which beads are considered in the "main chain", just as in
+Bitcoin new work can cause a reorganization of the chain ("reorg"), which makes
+a block that was previously an orphan be in the main chain.
+
+We have considered the [PHANTOM](https://eprint.iacr.org/2018/104) proposal
+which has many similarities to ours and should be read by implementors. We
+reject it for the following reasons:
+
+1. The k-width heuristic is somewhat analogous to our cohorts, but has the
+   property that it improperly penalizes naturally occurring beads. If for
+   example we target the bead rate such that 40% of the cohorts have 2 or more
+   beads, this means that approximately 2.5% of cohorts would have 4 or more
+   beads. The red/blue algorithm of PHANTOM would improperly penalize all but
+   the first three of the beads in this cohort.
+
+2. It is impossible in practice to reliably identify "honest" and "attacking"
+   nodes. There is only latency, which we can measure and take account of.
+
+### Work Weighting Algorithm
+
+Within Bitcoin, the "Longest Chain Rule" determines which tip has the most work
+among several possible tips. The "Longest Chain Rule" only works at constant
+difficulty and the actual rule is a "Highest Work" rule when you consider
+difficulty changes.
+
+Therefore we require an algorithm to calculate the total work for each bead.
+This total work can then be used to select the highest work tips as well as to
+select transactions within beads which have more work than other beads for
+transaction conflict resolution.
+
+For conflict resolution, we choose the Simple Sum of Descendant Work (SSDW),
+which is the sum of work among descendants for each bead, disregarding any graph
+structure. Graph structure is manipulable at zero cost, therefore we must have a
+conflict resolution algorithm that is independent of graph structure, lest we
+create a game which can be played to give a non-work advantage to an attacking
+miner which he could use to reverse transactions.
+
+The SSDW can be optimized by first applying the Cohort algorithm, since all
+beads in a parent cohort have all beads in all descendant cohorts added to their
+work. Therefore, the only thing that matters for conflict resolution is
+descendant work *within* a cohort.
+
+### Share Reward Algorithm
+
+We will use the Proportional algorithm for rewards, which divides rewards
+(including fees) within a difficulty adjustment epoch proportionally among
+submitted work-weighted shares.
+
+Now a purely work-weighted proportional algorithm would work for a pure-DAG
+blockchain, however we have the problem that some of the beads are blocks in a
+parent blockchain, and the blockchain has the property that some blocks can be
+orphans and receive no reward. We must dis-incentivize the creation of blocks at
+the same time which might become orphans. One component of this solution is the
+[Difficulty Retarget Algorithm](#difficulty-retarget-algorithm) which maximizes
+throughput while minimizing the number of simultaneous beads.
+
+However simultaneous beads will happen naturally due to the faster bead time,
+latency, and attackers. Within a time window $T_C$ (the cohort time), the
+probability that 2 or more blocks is generated by the parent blockchain is
+\[
+P_{\ge 2} = 1 - e^{-\lambda} (1+\lambda)
+\]
+where
+\[
+\lambda = \frac{T_C}{\rm block time} \left(\frac{\rm pool hashrate}{\rm total
+hashrate}\right)
+\]
+
+Therefore shares within a cohort containing 2 or more beads must be weighted by
+$1-P_{\ge 2}(T_C)$. Beads which are "blockchain-like" will be counted as full
+shares, while beads in larger cohorts will be counted as slightly less than a
+full share by this factor.
+
+As $T_C$ grows, the value of shares decreases. Therefore an attacker attempting
+to reorganize transactions or execute a selfish mining attack will see the value
+of his shares decrease in an appropriate way corresponding to how likely it is
+that he generates an orphan and reduces the profit of the pool.
+
+### Difficulty Retarget Algorithm
+
+
+### Miner Selected Difficulty
+
+Within the Braid we wish to allow different miners to select their difficulty
+and to target for constant *variance* among miners by allowing a small miner to
+use a lower difficulty than a larger miner.
+
 ## Share Payout Algorithm
 
 A great many [share payout
@@ -259,6 +371,65 @@ This would take the form of a special message or transaction sent to the pool
 UHPO set transaction, and create a new separate transaction which pays that
 hasher, [authorizes](#payout-authorization) it, and broadcasts it to bitcoin.
 
+## Rolling Coinbase Aggregation
+
+Each block produces a new coinbase output, and an update to the [UHPO
+set](#the-unspent-hasher-payment-output-UHPO). In order to simplify the UHPO
+outputs, we will *aggregate* the existing coinbases. In addition to the
+coinbase, each block mined by braidpool must additionally have a transaction
+having two inputs and one output
+
+    Input (1): <existing braidpool aggregate UTXO>
+    Input (2): <block N-100 coinbase output>
+    Outputs (1): <new braidpool aggregate UTXO>
+
+which merges the existing UHPO root with the new spendable output. We must write
+this transaction only for coinbases older than 100 blocks because of bitcoin's
+coinbase maturity rule.
+
+This transaction is created *after* a block is successfully mined by braidpool,
+since the extranonce used by mining devices changes the coinbase txid, we can't
+sign this transaction until its Input(2) txid is known.  (Unless we have
+ANYPREVOUT, but there is not really any reason to sign
+
+After the RCA transaction is signed, and its corresponding UHPO transaction is
+signed, spending the RCA's output, braidpool nodes will *delete* the
+corresponding key shares and keys associated with signing these. As long as
+$n-t$ nodes successfully delete these shares and keys, and the RCA and UHPO
+transactions are distributed to all nodes, it then becomes impossible to spend
+the aggregated braidpool funds in any other way.
+
+This is very similar to the "On-Chain Update Protocol" (Sec 3) of the
+[Eltoo](https://blockstream.com/eltoo.pdf) paper. Because in each block we
+update the RCA output, it automatically invalidates the share payout of the
+previous UHPO transaction. Broadcasting an old UHPO transaction would be a
+double spend with the RCA transaction. Only one of the two can be accepted.
+
+FIXME should update and settlement keys be different here?
+
+FIXME use a tapscript for the UHPO payment. Happy path is RCA, and just a
+Schnorr signature.
+
+FIXME Can we authorize the tapscript UHPO in any other way? Can we verify a PoW
+hash for instance?
+
+FIXME pre-kegen and ROAST parallel signing
+
+FIXME use nlocktime or CSV? CSV would separate the update and settlement
+transactions.
+
+FIXME what do we do with any coinbases mined by braidpool after the settlement
+tx is broadcast? CSV and let the miner take it all?
+
+FIXME from eltoo paper: "The use of different key-pairs prevents an attacker
+from simply swapping out the branch selection and reusing the same signatures
+for the other branch."
+    This should still be possible with tapscript. An attacker can know the
+    pubkey tweak and adapt an update signature to be a settlement signature and
+    v/v.  (CHECK THIS)
+
+The script
+
 ## Pool Transactions and Derivative Instruments
 
 If the decentralized mining pool supports transactions of its own, one could
@@ -329,6 +500,12 @@ having availability of all data to see that consensus mechanism's chain tip. We
 assume that in the [weak block](#weak-blocks) metadata, the pool participants
 include a pubkey with which they will collaboratively sign the payout
 authorization.
+
+FIXME -- choose a subset of nodes who submitted shares using a hash function to
+"elect" them. Those nodes must then submit proof that their shares were valid by
+broadcasting the transaction tree in their share. If validation fails, the
+miner's shares are invalidated. This allows us to spot-check all hashers,
+mitigate block withholding attacks, and keep the signing subset small.
 
 The most logical set of signers to authorize the coinbase spends are the set of
 miners who have already successfully mined a bitcoin block. We want to avoid
@@ -428,6 +605,33 @@ select transactions according to the rules dictated by the pool. A full solution
 that restores bitcoin's censorship resistance requires decentralized payment as
 well.
 
+# Attacks
+
+## Block Withholding
+
+## Coinbaes Theft by Large Miners
+
+Because signing very large threshold Schnorr outputs is impractical, it is
+necessary to keep the number of signers $n$ of the $t$-of-$n$ UHPO root output
+relatively small, so as to complete the signature in a reasonable amount of time
+and without consuming too much bandwidth or computation.
+
+Therefore there exists the possibility that just due to luck, the same (large)
+miner might mine all $n$ of the most recent blocks, or that two miners who
+together mine all $n$ of the most recent blocks collude. In this case
+
+The UHPO root must be signed by $t$-of-$n$ of the most recent *distinct* miners
+who successfully mined bitcoin blocks.
+
+We might also consider including hashers who have not won bitcoin blocks. In
+order to do this we might select a random subset of recent shares, and require
+that those hashers prove the entire bitcoin block committed to in their share.
+Upon successful validation of their share, they are included in the signing
+subset for future blocks. Consensus on this signing subset would be included in
+beads.
+
+If a hasher is elected for UHPO signing, fails to provide proof of his
+
 # Unsolved Problems and Future Directions
 
 The largest unsolved problem here is that of the [Payout
@@ -493,3 +697,5 @@ could allow hashers 1000000x smaller to participate. A pool could in principle
 dynamically create and destroy sub-pools, moving miners between the sub-pools
 and main pool dependent on their observed hashrate, so as to target a constant
 variance for all hashers.
+
+
