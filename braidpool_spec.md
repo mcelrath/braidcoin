@@ -459,7 +459,7 @@ adjustment window have a different value compared to shares in another window,
 due to the difficulty adjustment itself. If one can compute the derivative
 
 $$
-    \frac{d({\rm hashrate})}{d({\rm BTC}) = \frac{d_1-d_2}{{\rm BTC}_1 - {\rm BTC}_2}
+    \frac{d({\rm hashrate})}{d({\rm BTC})} = \frac{d_1-d_2}{{\rm BTC}_1 - {\rm BTC}_2}
 $$
 
 then derivative instruments such as options and futures can be constructed by
