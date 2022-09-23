@@ -4,17 +4,22 @@
 Herein we present the specification for a decentralized mining pool we name
 "Braidpool". For background information and general considerations please read
 [General Considerations for Decentralized Mining
-Pools](https://github.com/mcelrath/braidcoin/blob/master/general_considerations.md).
-The sections below correspond to the sections in that document, describing how
-braidpool will solve each of these issues.  Orthogonal considerations including
-encrypted miner communication is being pursued by the
+Pools](https://github.com/mcelrath/braidcoin/blob/master/general_considerations.md)
+which has relevant general discussion omitted from this document.  The sections
+below correspond to the sections in that document, describing how braidpool will
+solve each of these issues.  Orthogonal considerations including encrypted miner
+communication is being pursued by the
 [StratumV2](https://github.com/stratum-mining/sv2-spec) project, which braidpool
 will build upon.
 
 # Table of Contents
 
 1. [Shares and Weak Blocks](#shares-and-weak-blocks)
-2. Braid Consensus Mechansim
+  1. [Share Value](#share-value)
+2. [Braid Consensus Mechansim](#braid-consensus-mechanism)
+  1. [Simple Sum of Descendant Work](#simple-sum-of-descendant-work)
+  2. [Difficulty Adjustment Algorithm](#difficulty-adjustment-algorithm)
+  3. [Miner-Selected Difficulty](#miner-selected-difficulty)
 3. UHPO Payout Commitment
 4. UHPO Root Signing Procedure
 5. Transaction Selection
@@ -24,7 +29,7 @@ Braidpool will
 ## Shares and Weak Blocks
 
 A *share* is a "weak block" that is defined as a standard bitcoin block that
-does not meet bitcoin's target difficulty $X$, but does meet some lesser
+does not meet bitcoin's target difficulty $x_b$, but does meet some lesser
 difficulty target $x$.
 
 The share is itself a bearer proof that a certain amount of sha256 computation
@@ -81,145 +86,7 @@ The `Braidpool Metadata` is:
 | `miner IP`      | IP address of this miner                                        |
 | `parents`       | An array of block hashes of parent beads                        |
 
-## Consensus Mechanism
-
-In a centralized pool, the central pool operator receives all shares and does
-accounting on them. While this accounting is simple, the point of a
-decentralized mining pool is that we don't want to trust any single entity to do
-this correctly, nor do we want to give any single entity control to steal all
-funds in the pool, or the power to issue payments incorrectly.
-
-Because of this, all hashers must receive the [shares](#weak-blocks) of all
-other hashers. Each share could have been a bitcoin block if it had met
-bitcoin's difficulty target and must commit to the pool metadata as described
-above.
-
-With the set of shares for a given epoch, we must place a consensus mechanism on
-the shares, so that all participants of the pool agree that these are valid
-shares and deserve to be paid out according to the pool's payout mechanism.
-
-The consensus mechanism must have the characteristic that it operates much
-*faster* than bitcoin, so that it can collect as many valid shares as possible
-between valid bitcoin blocks. The reason for this is that one of the primary
-goals of a pool is *variance reduction*.
-[P2Pool](https://en.bitcoin.it/wiki/P2Pool) achieved this by using a standard
-blockchain having a block time of 30s, and the [Monero
-p2pool](https://github.com/SChernykh/p2pool) achieves it using a block time of
-10s.
-
-Bitcoin has spawned a great amount of research into consensus algorithms which
-might be considered here including the [GHOST
-protocol](https://eprint.iacr.org/2013/881), [asynchronous
-PBFT](https://eprint.iacr.org/2016/199), "sampling" algorithms such as
-[Avalanche](https://arxiv.org/abs/1906.08936) and that used by
-[DFinity](https://arxiv.org/abs/1704.02397), and
-[DAG-based](https://eprint.iacr.org/2018/104) algorithms. (This is not an
-exhaustive bibliography but just a representative sample of the options)
-
-One characteristic that is common to all consensus algorithms is that consensus
-cannot be arrived at faster than roughly the global network latency. Regardless
-of which consensus algorithm is chosen, it is necessary for all participants to
-see all data going into the current state, and be able to agree that this is the
-correct current state. Surveying the networks developed with the above
-algorithms, one finds that the fastest they can come to consensus is in around
-one second. Therefore the exact "time-to-consensus" of different algorithms
-varies by an O(1) constant, all of them are around 1 second. This is around 600
-times faster than bitcoin blocks, and results in miners 600 times smaller being
-able to contribute, and a 600x factor reduction in variance compared to solo
-mining.
-
-While a 600x decrease in variance is a worthy goal, this is not enough of an
-improvement to allow a single modern mining device to reduce its variance enough
-to be worthwhile. Therefore, a different solution must be found for miners
-smaller than a certain hashrate. We present some ideas in
-[Sub-Pools](#sub-pools).
-
-From our perspective, the obvious choice for a consensus algorithm is a DAG
-which re-uses bitcoin's proof of work in the same spirit as bitcoin itself --
-that is, the chain tip is defined by the heaviest work-weighted tip, and
-conflict resolution within the DAG uses work-weighting. Note that this is the
-same as the "longest chain rule" which only works at constant difficulty, but we
-assume the DAG does not have constant difficulty so combining difficulties must
-be done correctly. The solution is to identify the heaviest weight linear path
-from genesis to tip, where the difficulties are summed along the path.
-
-Finally, we caution that in considering mechanisms to include even smaller
-miners, one must not violate the "progress-free" characteristic of bitcoin. That
-is, one should not sum work from a subset of smaller miners to arrive at a
-higher-work block in the DAG.
-
-## Braid
-
-The consensus algorithm we choose is inspired by simply extending Nakamoto
-consensus to a Directed Acyclic Graph. We call nodes in this DAG "beads" and the
-overall structure a "braid" so as to distinguish it from the bitcoin blocks and
-chain. Some of the beads in the DAG are bitcoin blocks.
-
-We call this structure a "braid" because it contains an extra restriction
-relative to a general DAG: beads must not name as parents other beads which are
-ancestors of another parent. Naming a parent that is an ancestor of another
-parent conveys no useful information, since ancestors of each parent are already
-considered when ordering the DAG and including transactions. Visually this means
-that a braid will never have triangles or some other higher order structures.
-
-A DAG can be totally ordered in linear time using either [Kahn's
-algorithm](https://dl.acm.org/doi/10.1145/368996.369025) or a modified
-depth-first search which terminates when a bead is found that is a common
-ancestor to all of a bead's parents, which defines a "graph cut" and a point of
-global consensus on all ancestors. We define the set of beads between two graph
-cuts to be a "cohort". Within a cohort it is not possible to total order the
-contained beads using graph structure alone. The cohort can be defined as a set
-of beads having the same set of oldest common descendants and youngest common
-ancestors.
-
-It should be noted that within a braid we keep *all* beads with a valid PoW,
-regardless of whether they are considered invalid in other ways, or contain
-conflicting transactions. Transaction conflict resolution within the Braid is
-decided by the [Work Weighting Algorithm](#work-weighting-algorithm) and doing
-so requires retaining both sides of the conflict. It is generally possible for
-new work to change which beads are considered in the "main chain", just as in
-Bitcoin new work can cause a reorganization of the chain ("reorg"), which makes
-a block that was previously an orphan be in the main chain.
-
-We have considered the [PHANTOM](https://eprint.iacr.org/2018/104) proposal
-which has many similarities to ours and should be read by implementors. We
-reject it for the following reasons:
-
-1. The k-width heuristic is somewhat analogous to our cohorts, but has the
-   property that it improperly penalizes naturally occurring beads. If for
-   example we target the bead rate such that 40% of the cohorts have 2 or more
-   beads, this means that approximately 2.5% of cohorts would have 4 or more
-   beads. The red/blue algorithm of PHANTOM would improperly penalize all but
-   the first three of the beads in this cohort.
-
-2. It is impossible in practice to reliably identify "honest" and "attacking"
-   nodes. There is only latency, which we can measure and take account of.
-
-### Work Weighting Algorithm
-
-Within Bitcoin, the "Longest Chain Rule" determines which tip has the most work
-among several possible tips. The "Longest Chain Rule" only works at constant
-difficulty and the actual rule is a "Highest Work" rule when you consider
-difficulty changes.
-
-Therefore we require an algorithm to calculate the total work for each bead.
-This total work can then be used to select the highest work tips as well as to
-select transactions within beads which have more work than other beads for
-transaction conflict resolution.
-
-For conflict resolution, we choose the Simple Sum of Descendant Work (SSDW),
-which is the sum of work among descendants for each bead, disregarding any graph
-structure. Graph structure is manipulable at zero cost, therefore we must have a
-conflict resolution algorithm that is independent of graph structure, lest we
-create a game which can be played to give a non-work advantage to an attacking
-miner which he could use to reverse transactions.
-
-The SSDW can be optimized by first applying the Cohort algorithm, since all
-beads in a parent cohort have all beads in all descendant cohorts added to their
-work. Therefore, the only thing that matters for conflict resolution is
-descendant work *within* a cohort.
-
-### Share Reward Algorithm
+### Share Value
 
 A great many [share payout
 algorithms](https://medium.com/luxor/mining-pool-payment-methods-pps-vs-pplns-ac699f44149f)
@@ -296,6 +163,77 @@ the [Difficulty Retarget Algorithm](#difficulty-retarget-algorithm), and $x_b$
 is the bitcoin target. Note that $w = 1/x$ is traditionally called the "work",
 and is a statistical estimate of the number of sha256d computations performed by
 the miner.
+
+## Braid Consensus Mechanism
+
+The consensus algorithm we choose is inspired by simply extending Nakamoto
+consensus to a Directed Acyclic Graph. We call nodes in this DAG "beads" and the
+overall structure a "braid" so as to distinguish it from the bitcoin blocks and
+chain. Some of the beads in the DAG are bitcoin blocks.
+
+We call this structure a "braid" because it contains an extra restriction
+relative to a general DAG: beads must not name as parents other beads which are
+ancestors of another parent. Naming a parent that is an ancestor of another
+parent conveys no useful information, since ancestors of each parent are already
+implied when ordering the DAG and including transactions. Visually this means
+that a braid will never have triangles or some other higher order structures.
+
+A DAG can be totally ordered in linear time using either [Kahn's
+algorithm](https://dl.acm.org/doi/10.1145/368996.369025) or a modified
+depth-first search which terminates when a bead is found that is a common
+ancestor to all of a bead's parents, which defines a "graph cut" and a point of
+global consensus on all ancestors. We define the set of beads between two graph
+cuts to be a "cohort". Within a cohort it is not possible to total order the
+contained beads using graph structure alone. The cohort can be defined as a set
+of beads having the same set of oldest common descendants and youngest common
+ancestors.
+
+It should be noted that within a braid we keep *all* beads with a valid PoW,
+regardless of whether they are considered invalid in other ways, or contain
+conflicting transactions. Transaction conflict resolution within the Braid is
+decided by the [Work Weighting Algorithm](#work-weighting-algorithm) and doing
+so requires retaining both sides of the conflict. It is generally possible for
+new work to change which beads are considered in the "main chain", just as in
+Bitcoin new work can cause a reorganization of the chain ("reorg"), which makes
+a block that was previously an orphan be in the main chain.
+
+We have considered the [PHANTOM](https://eprint.iacr.org/2018/104) proposal
+which has many similarities to ours and should be read by implementors. We
+reject it for the following reasons:
+
+1. The k-width heuristic is somewhat analogous to our cohorts, but has the
+   property that it improperly penalizes naturally occurring beads. If for
+   example we target the bead rate such that 40% of the cohorts have 2 or more
+   beads, this means that approximately 2.5% of cohorts would have 4 or more
+   beads. The red/blue algorithm of PHANTOM would improperly penalize all but
+   the first three of the beads in this cohort.
+
+2. It is impossible in practice to reliably identify "honest" and "attacking"
+   nodes. There is only latency, which we can measure and take account of.
+
+### Simple Sum of Descendant Work
+
+Within Bitcoin, the "Longest Chain Rule" determines which tip has the most work
+among several possible tips. The "Longest Chain Rule" only works at constant
+difficulty and the actual rule is a "Highest Work" rule when you consider
+difficulty changes.
+
+Therefore we require an algorithm to calculate the total work for each bead.
+This total work can then be used to select the highest work tips as well as to
+select transactions within beads which have more work than other beads for
+transaction conflict resolution.
+
+For conflict resolution, we choose the Simple Sum of Descendant Work (SSDW),
+which is the sum of work among descendants for each bead, disregarding any graph
+structure. Graph structure is manipulable at zero cost, therefore we must have a
+conflict resolution algorithm that is independent of graph structure, lest we
+create a game which can be played to give a non-work advantage to an attacking
+miner which he could use to reverse transactions.
+
+The SSDW can be optimized by first applying the Cohort algorithm, since all
+beads in a parent cohort have all beads in all descendant cohorts added to their
+work. Therefore, the only thing that matters for conflict resolution is
+descendant work *within* a cohort.
 
 ### Difficulty Retarget Algorithm
 
