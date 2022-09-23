@@ -33,11 +33,10 @@ does not meet bitcoin's target difficulty $x_b$, but does meet some lesser
 difficulty target $x$.
 
 The share is itself a bearer proof that a certain amount of sha256 computation
-has been done. The share itself must have a structure that indicates that it
-"belongs" to braidpool. The share has additional structure that indicates to
-other miners in the pool that the share belongs to the pool, and if it had met
-bitcoin's difficulty target, the share contains commitments such that all
-*other* miners in the pool would be paid according to the share tally.
+has been done. The share has additional structure that indicates to other miners
+that the share belongs to braidpool, and if it had met bitcoin's difficulty
+target, it contains commitments such that all *other* miners in the pool
+would be paid according to the share tally.
 
 Shares or blocks which do not commit to the additional metadata proving that the
 share is part of the braidpool must be excluded from the share calculation, and
@@ -46,7 +45,7 @@ sha256 header to a braidpool node must not count as a share contribution unless
 the ultimate payout for that share, had it become a bitcoin block, would have
 paid all members of the pool in such a way that all other hashers are paid.
 
-Consider a braidpool "share" that looks like:
+A braidpool "share" is a data structure containing:
 
     Version | Previous Block Hash | Merkle Root | Timestamp | Difficulty Target | Nonce
     Coinbase Transaction | Merkle Sibling | Merkle Sibling | ...
@@ -60,7 +59,7 @@ for the braidpool's [braid consensus mechansim](#braid-consensus-mechanism), in
 an `OP_RETURN` output.
 
 The `Coinbase Transaction` is a standard transaction having no inputs, and
-should have the following outputs:
+must have the following outputs:
 
     OutPoint(Value:0, scriptPubKey OP_RETURN "Braidpool"+<Braidpool Commitment>)
     OutPoint(Value:<block reward>, scriptPubKey <P2TR pool_pubkey>)
