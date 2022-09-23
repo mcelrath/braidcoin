@@ -316,8 +316,8 @@ $$
 where $a$ is a latency parameter and $\lambda$ a rate parameter given by
 
 $$
-a = T_C W\left(\frac{T_C}{T_B} - 1 \right);
-\lambda = \frac{N_B}{x T_C N_C}
+a = T_C W\left(\frac{T_C}{T_B} - 1 \right); \qquad
+\lambda = \frac{N_B}{x T_C N_C},
 $$
 
 where $T_B = \frac{1}{\lambda x}$ is the bead time, $T_C$ is the (measured)
@@ -325,7 +325,7 @@ cohort time, and $W(z)$ is the [Lambert W
 function](https://en.wikipedia.org/wiki/Lambert_W_function).
 
 Given a starting value for $x$, we can measure these parameters directly from
-the braid
+the braid within a time window corresponding to a retarget epoch:
 | Parameter   | Description |
 | ----------- | ----------- |
 | $N_B$       | Number of beads   |
@@ -341,12 +341,13 @@ $$
 
 This minimum corresponds to the fastest possible cohort time, and the most
 frequent global consensus achievable in a braid. For smaller target difficulty
-$x \to 0$, the braid becomes blockchain-like, and $T(x) \to (\lambda x)^{-1} + a
-+ \mathcal{O}(x)$, showing that the parameter a is the increase in effective
-block time due to network latency effects. In the opposite limit $x \to \infty$,
-cohorts become large, meaning that beads cannot be total ordered and
-double-spend conflicts cannot be resolved. In this limit the cohort time
-increases exponentially, so we cannot let $x$ get too large.
+$x \to 0$, the braid becomes blockchain-like, and
+$T(x) \to (\lambda x)^{-1} + a + \mathcal{O}(x)$, showing that the parameter a
+is the increase in effective block time due to network latency effects. In the
+opposite limit $x \to \infty$, cohorts become large, meaning that beads cannot
+be total ordered, double-spend conflicts cannot be resolved, and global
+consensus is never achieved. In this limit the cohort time increases
+exponentially, so we cannot let $x$ get too large.
 
 This gives us a zero-parameter retargeting algorithm. At any time we can
 evaluate $x_0$, which represents a maximum target difficulty that the braid will
