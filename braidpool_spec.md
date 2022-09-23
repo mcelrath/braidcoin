@@ -304,14 +304,72 @@ that he generates an orphan and reduces the profit of the pool.
 
 ### Difficulty Retarget Algorithm
 
-See [Braid Retargeting
+![Cohort time $T(x)$ vs target difficulty $x$](T_C_x.png)
+
+The cohort time $T(x)$ in terms of the target difficulty $x$ is well approximated
+by
+
+$$
+T(x) = \frac{1}{\lambda x} + a e^{a \lambda x}
+$$
+
+where $a$ is a latency parameter and $\lambda$ a rate parameter given by
+
+$$
+a = T_C W\left(\frac{T_C}{T_B} - 1 \right);
+\lambda = \frac{N_B}{x T_C N_C}
+$$
+
+where $T_B = \frac{1}{\lambda x}$ is the bead time, $T_C$ is the (measured)
+cohort time, and $W(z)$ is the [Lambert W
+function](https://en.wikipedia.org/wiki/Lambert_W_function).
+
+Given a starting value for $x$, we can measure these parameters directly from
+the braid
+| Parameter   | Description |
+| ----------- | ----------- |
+| $N_B$       | Number of beads   |
+| $N_C$       | Number of cohorts |
+| $T_C$       | Cohort time |
+| $T_B$       | Bead time |
+
+This function has a minimum at
+
+$$
+x_0 = \frac{2 W(\frac12}}{a \lambda} = \frac{0.7035}{a \lambda}.
+$$
+
+This minimum corresponds to the fastest possible cohort time, and the most
+frequent global consensus achievable in a braid. For smaller target difficulty
+$x \to 0$, the braid becomes blockchain-like, and $T(x) \to (\lambda x)^{-1} + a
++ \mathcal{O}(x)$, showing that the parameter a is the increase in effective
+block time due to network latency effects. In the opposite limit $x \to \infty$,
+cohorts become large, meaning that beads cannot be total ordered and
+double-spend conflicts cannot be resolved. In this limit the cohort time
+increases exponentially, so we cannot let $x$ get too large.
+
+This gives us a zero-parameter retargeting algorithm. At any time we can
+evaluate $x_0$, which represents a maximum target difficulty that the braid will
+accept.
+
+[Braid Retargeting
 Algorithm](https://rawgit.com/mcelrath/braidcoin/master/Braid%2BExamples.html)
+contains the full analysis that results in this formula including code to
+reproduce this result.
 
 ### Miner Selected Difficulty
 
 Within the Braid we wish to allow different miners to select their difficulty
 and to target for constant *variance* among miners by allowing a small miner to
-use a lower difficulty than a larger miner.
+use a lower difficulty than a larger miner. Miners may select any difficulty
+between the maximum target $x_0$ described in [Difficulty Retarget
+Algorithm](#difficulty-retarget-algorithm) and the bitcoin target.
+
+We will write braidpool to automatically select an appropriate target difficulty
+based on the miner's observed hashrate. Larger miners will see a higher target
+selected while smaller miners will see a lower target, where we will seek that
+each miner is expected to produce on average one bead per bitcoin block. For
+miners smaller than this they will be allocated to a [Sub-Pool](#sub-pools).
 
 # Payout Commitment
 
