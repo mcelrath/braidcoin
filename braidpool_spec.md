@@ -304,7 +304,7 @@ that he generates an orphan and reduces the profit of the pool.
 
 ### Difficulty Retarget Algorithm
 
-![Cohort time $T(x)$ vs target difficulty $x$](T_C_x.png)
+![Cohort time $T(x)$ vs target difficulty $x$](https://github.com/mcelrath/braidcoin/raw/master/T_C_x.png)
 
 The cohort time $T(x)$ in terms of the target difficulty $x$ is well approximated
 by
