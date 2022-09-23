@@ -7,12 +7,12 @@ Herein we present the specification for a decentralized mining pool we name
 Pools](https://github.com/mcelrath/braidcoin/blob/master/general_considerations.md)
 which has relevant general discussion omitted from this document.  The sections
 below correspond to the sections in that document, describing how braidpool will
-solve each of these issues.  Orthogonal considerations including encrypted miner
-communication is being pursued by the
+solve each of the indicated issues.  Orthogonal considerations including
+encrypted miner communication is being pursued by the
 [StratumV2](https://github.com/stratum-mining/sv2-spec) project, which braidpool
 will build upon.
 
-# Table of Contents
+## Table of Contents
 
 1. [Shares and Weak Blocks](#shares-and-weak-blocks)
     1. [Share Value](#share-value)
@@ -26,7 +26,7 @@ will build upon.
 
 Braidpool will
 
-## Shares and Weak Blocks
+# Shares and Weak Blocks
 
 A *share* is a "weak block" that is defined as a standard bitcoin block that
 does not meet bitcoin's target difficulty $x_b$, but does meet some lesser
@@ -85,7 +85,7 @@ The `Braidpool Metadata` is:
 | `miner IP`      | IP address of this miner                                        |
 | `parents`       | An array of block hashes of parent beads                        |
 
-### Share Value
+## Share Value
 
 A great many [share payout
 algorithms](https://medium.com/luxor/mining-pool-payment-methods-pps-vs-pplns-ac699f44149f)
@@ -163,7 +163,7 @@ is the bitcoin target. Note that $w = 1/x$ is traditionally called the "work",
 and is a statistical estimate of the number of sha256d computations performed by
 the miner.
 
-## Braid Consensus Mechanism
+# Braid Consensus Mechanism
 
 The consensus algorithm we choose is inspired by simply extending Nakamoto
 consensus to a Directed Acyclic Graph. We call nodes in this DAG "beads" and the
@@ -210,7 +210,7 @@ reject it for the following reasons:
 2. It is impossible in practice to reliably identify "honest" and "attacking"
    nodes. There is only latency, which we can measure and take account of.
 
-### Simple Sum of Descendant Work
+## Simple Sum of Descendant Work
 
 Within Bitcoin, the "Longest Chain Rule" determines which tip has the most work
 among several possible tips. The "Longest Chain Rule" only works at constant
@@ -241,7 +241,7 @@ beads in a parent cohort have all beads in all descendant cohorts added to their
 work. Therefore, the only thing that matters for conflict resolution is
 descendant work *within* a cohort.
 
-### Difficulty Retarget Algorithm
+## Difficulty Retarget Algorithm
 
 ![Cohort time $T(x)$ vs target difficulty $x$](https://github.com/mcelrath/braidcoin/raw/master/T_C_x.png)
 
@@ -297,7 +297,7 @@ Algorithm](https://rawgit.com/mcelrath/braidcoin/master/Braid%2BExamples.html)
 contains the full analysis that results in this formula including code to
 reproduce this result.
 
-### Miner Selected Difficulty
+## Miner Selected Difficulty
 
 Within the Braid we wish to allow different miners to select their difficulty
 and to target for constant *variance* among miners by allowing a small miner to
