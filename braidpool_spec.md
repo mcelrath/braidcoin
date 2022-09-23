@@ -24,19 +24,17 @@ will build upon.
 4. UHPO Root Signing Procedure
 5. Transaction Selection
 
-Braidpool will
-
 # Shares and Weak Blocks
 
 A *share* is a "weak block" that is defined as a standard bitcoin block that
 does not meet bitcoin's target difficulty $x_b$, but does meet some lesser
 difficulty target $x$.
 
-The share is itself a bearer proof that a certain amount of sha256 computation
-has been done. The share has additional structure that indicates to other miners
-that the share belongs to braidpool, and if it had met bitcoin's difficulty
-target, it contains commitments such that all *other* miners in the pool
-would be paid according to the share tally.
+The share is itself a bearer proof that $1/x$ sha256 computations have been
+done. The share data structure has additional data that indicates to other
+miners that the share belongs to braidpool, and if it had met bitcoin's
+difficulty target, it contains commitments such that all *other* miners in the
+pool would be paid according to the share tally.
 
 Shares or blocks which do not commit to the additional metadata proving that the
 share is part of the braidpool must be excluded from the share calculation, and
@@ -45,7 +43,8 @@ sha256 header to a braidpool node must not count as a share contribution unless
 the ultimate payout for that share, had it become a bitcoin block, would have
 paid all members of the pool in such a way that all other hashers are paid.
 
-A braidpool "share" is a data structure containing:
+A braidpool "share" is a data structure containing a bitcoin block header, the
+coinbase transaction, and metadata:
 
     Version | Previous Block Hash | Merkle Root | Timestamp | Difficulty Target | Nonce
     Coinbase Transaction | Merkle Sibling | Merkle Sibling | ...
@@ -70,11 +69,10 @@ such a way that the [braid consensus mechanism](#braid-consensus-mechanism) can
 only spend it in such a way as to pay all hashers in the manner described by its
 share accounting.
 
-The `<Braidpool Commitment>` is a hash of `Braidpool Metadata` committing to any
-additional data required for the operation of the pool. At a minimum, this must
-include the weak difficulty target $t$ (or it must be computable from this
-metadata). Validation of this share requires that the PoW hash of this bitcoin
-header be less than this weak difficulty target $t$.
+The `<Braidpool Commitment>` is a hash of `Braidpool Metadata` committing to
+additional data required for the operation of the pool. Validation of this share
+requires that the PoW hash of this bitcoin header be less than this weak
+difficulty target $x$.
 
 The `Braidpool Metadata` is:
 | Field           | Description                                                     |
@@ -95,10 +93,10 @@ will use the **Full Proportional** method, meaning that all rewards and fees are
 fully distributed to hashers proportionally to their contributed shares. Closely
 related methods like Pay Per Share (PPS) allow the pool operator to earn the
 fees, but a decentralized mining pool has no operator which could/should be
-earning these fees for a decentralized mining pool. While many projects have
-inserted a "developer donation", we feel that braidpool is an open source public
-good that should be developed and maintained by the community, without the
-political drama of who and how to pay with a source of funds.
+earning these fees. While many projects have inserted a "developer donation", we
+feel that braidpool is an open source public good that should be developed and
+maintained by the community, without the political drama of who and how to pay
+with a source of funds.
 
 With PPS-type methods, most centralized pool operators are taking a risk on
 paying immediately for shares, therefore absorbing the variance risk involved in
@@ -115,11 +113,11 @@ primarily to discourage pool hopping. We don't feel that this is needed in the
 modern day and a smoothing function applied to payouts interferes with the
 notion of using shares as a hashrate derivative instrument.
 
-Now a purely work-weighted proportional algorithm would work for a pure-DAG
+A purely work-weighted proportional algorithm would work for a pure-DAG
 blockchain, however we have the problem that some of the beads are blocks in a
-parent blockchain, and the blockchain has the property that some blocks can be
-orphans and receive no reward. We must dis-incentivize the creation of blocks at
-the same time which might become orphans. One component of this solution is the
+parent blockchain, and the parent blockchain has the property that some blocks
+can be orphans and receive no reward. We must dis-incentivize the creation of
+blocks which might become orphans. One component of this solution is the
 [difficulty retarget algorithm](#difficulty-retarget-algorithm) which maximizes
 throughput while minimizing the number of simultaneous beads.
 
@@ -130,20 +128,28 @@ obtained by summing the Poisson distribution in terms of its rate parameter
 $\sigma$ (usually called $\lambda$) and is
 
 $$
-P_{\ge 2} = \sum_{k=2}^\infty \frac{\sigma^k e^{-\sigma}}{k!} = 1 - e^{-\sigma} (1+\sigma)
+P_{\ge 2}(T_C) = \sum_{k=2}^\infty \frac{\sigma(T_C)^k e^{-\sigma(T_C)}}{k!} = 1 - e^{-\sigma(T_C)} (1+\sigma(T_C))
 $$
 
 where
 
 $$
-\sigma = \frac{T_C}{\rm block\ time} \left(\frac{\rm pool\ hashrate}{\rm total
+\sigma(T_C) = \frac{T_C}{\rm block\ time} \left(\frac{\rm pool\ hashrate}{\rm total
 \ hashrate}\right)
 $$
 
 Therefore shares within a cohort containing 2 or more beads must be weighted by
 $1-P_{\ge 2}(T_C)$. Beads which are "blockchain-like" will be counted as full
 shares, while beads in larger cohorts will be counted as slightly less than a
-full share by this factor.
+full share by this factor. The value $T_C$ is the cohort time, which is half the
+time difference between the median of the parent cohort's timestamps, and the
+median of the descendant cohort's timestamps.
+
+# FIXME this seems to punish lower-target miners.
+# FIXME use parent and child cohort times? Measuring time...
+# Is it appropriate to apply this factor to even blockchain-like beads?
+# Median timestamp of parent cohort minus median timestamp of child cohort?
+# Insert parent observed timestamp?
 
 As $T_C$ grows, the value of shares decreases. Therefore an attacker attempting
 to reorganize transactions or execute a selfish mining attack will see the value
@@ -153,7 +159,7 @@ that he generates an orphan and reduces the profit of the pool.
 Summing it all up, the number of shares $s$ for a given bead is given by:
 
 $$
-s = \frac{1}{x P_{\ge 2}}
+s = \frac{1}{x (1-P_{\ge 2})}
 $$
 
 Where $x_b \le x \le x_0$ is the [miner-selected
@@ -162,6 +168,13 @@ the [Difficulty Retarget Algorithm](#difficulty-retarget-algorithm), and $x_b$
 is the bitcoin target. Note that $w = 1/x$ is traditionally called the "work",
 and is a statistical estimate of the number of sha256d computations performed by
 the miner.
+
+At first glance this algorithm might seem to "punish" lower-target (higher work)
+miners given [miner-selected difficulty](#miner-selected difficulty), however
+because it is directly proportional to work $w=1/x$, it weights high-work miners
+more than low-work miners. So while a low-work miner is more likely to generate
+a cohort with a high-work miner, the reward and share is appropriately
+work-weighted.
 
 # Braid Consensus Mechanism
 
