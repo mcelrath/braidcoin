@@ -248,11 +248,11 @@ and has no source of funds other than block rewards with which pay hashers, it
 will use the **Full Proportional** method, meaning that all rewards and fees are
 fully distributed to hashers proportionally to their contributed shares. Closely
 related methods like Pay Per Share (PPS) allow the pool operator to earn the
-fees, but there is no entity which could/should be earning these fees for a
-decentralized mining pool. While many projects have inserted a "developer
-donation", we feel that braidpool is an open source public good that should be
-developed and maintained by the community, without the political drama of who
-and how to pay with a source of funds.
+fees, but a decentralized mining pool has no operator which could/should be
+earning these fees for a decentralized mining pool. While many projects have
+inserted a "developer donation", we feel that braidpool is an open source public
+good that should be developed and maintained by the community, without the
+political drama of who and how to pay with a source of funds.
 
 With PPS-type methods, most centralized pool operators are taking a risk on
 paying immediately for shares, therefore absorbing the variance risk involved in
@@ -379,11 +379,22 @@ use a lower difficulty than a larger miner. Miners may select any difficulty
 between the maximum target $x_0$ described in [Difficulty Retarget
 Algorithm](#difficulty-retarget-algorithm) and the bitcoin target.
 
-We will write braidpool to automatically select an appropriate target difficulty
-based on the miner's observed hashrate. Larger miners will see a higher target
-selected while smaller miners will see a lower target, where we will seek that
-each miner is expected to produce on average one bead per bitcoin block. For
-miners smaller than this they will be allocated to a [Sub-Pool](#sub-pools).
+Braidpool will automatically select an appropriate target difficulty based on
+the miner's observed hashrate. Larger miners will see a higher target selected
+while smaller miners will see a lower target, where we will seek that each miner
+is expected to produce on average one bead per bitcoin block. For miners smaller
+than this they will be allocated to a [Sub-Pool](#sub-pools).
+
+Note that this equal-variance target is not enforceable by consensus. A miner
+could choose to run multiple braidpool instances or just change the code to
+select a different target, and the braidpool software-selected target is an
+unenforceable recommendation. The consequence of a miner ignoring this
+recommendation would be to decrease a single miner's variance at the expense of
+producing more beads in the braid for the same amount of work. This slows down
+the braid and increases the bead time. Accepting this equal-variance target
+allows braidpool to accommodate the maximum number of miners, the most work, and
+the fastest possible bead time without resorting to allocating more miners to
+[Sub-Pools](#sub-pools).
 
 # Payout Commitment
 
