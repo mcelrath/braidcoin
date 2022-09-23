@@ -336,7 +336,7 @@ the braid
 This function has a minimum at
 
 $$
-x_0 = \frac{2 W(\frac12}}{a \lambda} = \frac{0.7035}{a \lambda}.
+x_0 = \frac{2 W\left(\frac12\right)}{a \lambda} = \frac{0.7035}{a \lambda}.
 $$
 
 This minimum corresponds to the fastest possible cohort time, and the most
