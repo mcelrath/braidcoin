@@ -228,7 +228,13 @@ which is the sum of work among descendants for each bead, disregarding any graph
 structure. Graph structure is manipulable at zero cost, therefore we must have a
 conflict resolution algorithm that is independent of graph structure, lest we
 create a game which can be played to give a non-work advantage to an attacking
-miner which he could use to reverse transactions.
+miner which he could use to reverse transactions. The SSDW work is:
+
+$$
+    w_{\rm SSDW} = \sum_{i \in \rm descendants} \frac{1}{x_i}
+$$
+
+where $x_i$ is the target difficulty for descendant $i$.
 
 The SSDW can be optimized by first applying the Cohort algorithm, since all
 beads in a parent cohort have all beads in all descendant cohorts added to their
