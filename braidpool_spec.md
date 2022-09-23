@@ -1,107 +1,87 @@
 
-# Decentralized Mining Pools for Bitcoin
+# Braidpool Specification
 
-A decentralized mining pool consists of the following components:
-1. A [weak block](#weak-blocks) and difficulty target mechanism,
-2. A [consensus mechanism](#consensus-mechanism) for collecting and accounting
-   for shares,
-3. A [payout commitment](#payout-commitment) requiring a quorum of participants
-   to sign off on share payments,
-4. A [signing procedure](#signing-procedure) for signing the [payout
-   commitment](#payout-commitment) in such a way that the pool participants are
-   properly paid,
-5. A [transaction selection](#transaction-selection) mechanism for building
-   valid bitcoin blocks.
+Herein we present the specification for a decentralized mining pool we name
+"Braidpool". For background information and general considerations please read
+[General Considerations for Decentralized Mining
+Pools](https://github.com/mcelrath/braidcoin/blob/master/general_considerations.md).
+The sections below correspond to the sections in that document, describing how
+braidpool will solve each of these issues.  Orthogonal considerations including
+encrypted miner communication is being pursued by the
+[StratumV2](https://github.com/stratum-mining/sv2-spec) project, which braidpool
+will build upon.
 
-The improvements being made by the
-[StratumV2](https://github.com/stratum-mining/sv2-spec) project also include
-encrypted communication to mining devices. These problems are important largely
-factorizable from the pool itself, so we won't include discussion of that here,
-but it is assumed that any decentralized mining pool would use the StratumV2
-communications mechanisms.
+# Table of Contents
 
-# Weak Blocks
+1. [Shares and Weak Blocks](#shares-and-weak-blocks)
+2. Braid Consensus Mechansim
+3. UHPO Payout Commitment
+4. UHPO Root Signing Procedure
+5. Transaction Selection
+
+Braidpool will
+
+## Shares and Weak Blocks
 
 A *share* is a "weak block" that is defined as a standard bitcoin block that
-does not meet bitcoin's target difficulty $T$, but does meet some lesser
-difficulty target $t$. The *pool* specifies this parameter $t$ and when "weak
-block" is found, it is communicated to the pool.
+does not meet bitcoin's target difficulty $X$, but does meet some lesser
+difficulty target $x$.
 
 The share is itself a bearer proof that a certain amount of sha256 computation
 has been done. The share itself must have a structure that indicates that it
-"belongs" to a particular pool. In the case of centralized pools, this happens
-because the pool itself hands out "work units" (bitcoin headers) corresponding
-to a block that has been created by the pool, with transaction selection done
-by the (centralized) pool.
-
-In the case of a decentralized pool, the share itself must have additional
-structure that indicates to other miners in the pool that the share belongs to
-the pool, and if it had met bitcoin's difficulty target, the share contains
-commitments such that all *other* miners in the pool would be paid according to
-the share tally achieved by the decentralized [consensus
-mechanism](#consensus-mechanism) of the pool.
+"belongs" to braidpool. The share has additional structure that indicates to
+other miners in the pool that the share belongs to the pool, and if it had met
+bitcoin's difficulty target, the share contains commitments such that all
+*other* miners in the pool would be paid according to the share tally.
 
 Shares or blocks which do not commit to the additional metadata proving that the
-share is part of the pool must be excluded from the share calculation, and those
-miners are not "part of" the pool. In other words, submitting a random sha256
-header to a pool must not count as a share contribution unless the ultimate
-payout for that share, had it become a bitcoin block, would have paid the pool
-in such a way that all other hashers are paid.
+share is part of the braidpool must be excluded from the share calculation, and
+those miners are not "part of" the pool. In other words, submitting a random
+sha256 header to a braidpool node must not count as a share contribution unless
+the ultimate payout for that share, had it become a bitcoin block, would have
+paid all members of the pool in such a way that all other hashers are paid.
 
-For example, consider a decentralized mining pool's "share" that looks like:
+Consider a braidpool "share" that looks like:
 
     Version | Previous Block Hash | Merkle Root | Timestamp | Difficulty Target | Nonce
     Coinbase Transaction | Merkle Sibling | Merkle Sibling | ...
-    Pool Metadata
+    Braidpool Metadata
 
-Here the `Merkle Siblings` in the second line are the additional nodes in the
-transaction Merkle tree necessary to verify that the specified `Coinbase
-Transaction` transaction is included in the `Merkle Root`. We assume that this
-`Coinbase Transaction` commits to any additional data needed for the pool's
-[consensus mechansim](#consensus-mechanism), for instance in an `OP_RETURN`
-output.
+The first line is a standard Bitcoin block header.  The `Merkle Siblings` in the
+second line are the additional nodes in the transaction Merkle tree necessary to
+verify that the specified `Coinbase Transaction` transaction is included in the
+`Merkle Root`. This `Coinbase Transaction` commits to any additional data needed
+for the braidpool's [braid consensus mechansim](#braid-consensus-mechanism), in
+an `OP_RETURN` output.
 
 The `Coinbase Transaction` is a standard transaction having no inputs, and
 should have the following outputs:
 
-    OutPoint(Value:0, scriptPubKey OP_RETURN <Pool Commitment>)
+    OutPoint(Value:0, scriptPubKey OP_RETURN "Braidpool"+<Braidpool Commitment>)
     OutPoint(Value:<block reward>, scriptPubKey <P2TR pool_pubkey>)
 
 The `<block reward>` is the sum of all fees and block reward for this halving
 epoch, and `pool_pubkey` is an address controlled collaboratively by the pool in
-such a way that the [consensus mechanism](#consensus-mechanism) can only spend
-it in such a way as to pay all hashers in the manner described by its share
-accounting.
+such a way that the [braid consensus mechanism](#braid-consensus-mechanism) can
+only spend it in such a way as to pay all hashers in the manner described by its
+share accounting.
 
-The `<Pool Commitment>` is a hash of `Pool Metadata` committing to any
+The `<Braidpool Commitment>` is a hash of `Braidpool Metadata` committing to any
 additional data required for the operation of the pool. At a minimum, this must
 include the weak difficulty target $t$ (or it must be computable from this
 metadata). Validation of this share requires that the PoW hash of this bitcoin
 header be less than this weak difficulty target $t$.
 
-Other things that one might want to include in the `<Pool Commitment>` are:
+The `Braidpool Metadata` is:
+| Field           | Description                                                     |
+| -----           | -----------                                                     |
+| `target`        | Miner-selected target difficulty $x_b < x < x_0$                |
+| `payout_pubkey` | P2TR pubkey for this miner's payout                             |
+| `comm_pubkey`   | secp256k1 pubkey for encrypted DH communication with this miner |
+| `miner IP`      | IP address of this miner                                        |
+| `parents`       | An array of block hashes of parent beads                        |
 
-1. Pubkeys of the hasher that can be used in collaboratively signing the
-    [payout commitment](#payout-commitment),
-2. Keys necessary for encrypted communication with this miner,
-3. Identifying information such as an IP address, TOR address, or other routing
-   information that would allow other miners to communicate out-of-band with
-   this miner
-4. Parents of this share (bead, in the case of braidpool), or other
-   consensus-specific data if some other [consensus
-   mechansim](#consensus-mechanism) is used.
-5. Intermediate consensus data involved in multi-round threshold signing
-   ceremonies.
-
-Finally we note that there exists a proposal for [mining coordination using
-covenants (CTV)](https://utxos.org/uses/miningpools/) that does not use weak
-blocks, does not sample hashrate any faster than bitcoin blocks, and is
-incapable of reducing variance. It is therefore not a "pool" in the usual sense
-and we will not consider that design further, though covenants may still be
-useful for a decentralized mining pool, which we discuss in [Payout
-Commitments](#payout-commitments).
-
-# Consensus Mechanism
+## Consensus Mechanism
 
 In a centralized pool, the central pool operator receives all shares and does
 accounting on them. While this accounting is simple, the point of a
@@ -279,10 +259,12 @@ throughput while minimizing the number of simultaneous beads.
 
 However simultaneous beads will happen naturally due to the faster bead time,
 latency, and attackers. Within a time window $T_C$ (the cohort time), the
-probability that 2 or more blocks is generated by the parent blockchain is
+probability that 2 or more blocks is generated by the parent blockchain can be
+obtained by summing the Poisson distribution in terms of its rate parameter
+$\sigma$ (usually called $\lambda$) and is
 
 $$
-P_{\ge 2} = 1 - e^{-\sigma} (1+\sigma)
+P_{\ge 2} = \sum_{k=2}^\infty \frac{\sigma^k e^{-\sigma}}{k!} = 1 - e^{-\sigma} (1+\sigma)
 $$
 
 where
@@ -696,7 +678,7 @@ well.
 
 ## Block Withholding
 
-## Coinbaes Theft by Large Miners
+## Coinbase Theft by Large Miners
 
 Because signing very large threshold Schnorr outputs is impractical, it is
 necessary to keep the number of signers $n$ of the t-of-n UHPO root output
