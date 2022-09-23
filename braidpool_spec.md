@@ -15,11 +15,11 @@ will build upon.
 # Table of Contents
 
 1. [Shares and Weak Blocks](#shares-and-weak-blocks)
-  1. [Share Value](#share-value)
+    1. [Share Value](#share-value)
 2. [Braid Consensus Mechansim](#braid-consensus-mechanism)
-  1. [Simple Sum of Descendant Work](#simple-sum-of-descendant-work)
-  2. [Difficulty Adjustment Algorithm](#difficulty-adjustment-algorithm)
-  3. [Miner-Selected Difficulty](#miner-selected-difficulty)
+    1. [Simple Sum of Descendant Work](#simple-sum-of-descendant-work)
+    2. [Difficulty Adjustment Algorithm](#difficulty-adjustment-algorithm)
+    3. [Miner-Selected Difficulty](#miner-selected-difficulty)
 3. UHPO Payout Commitment
 4. UHPO Root Signing Procedure
 5. Transaction Selection
