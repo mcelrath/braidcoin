@@ -18,7 +18,7 @@ will build upon.
     1. [Share Value](#share-value)
 2. [Braid Consensus Mechansim](#braid-consensus-mechanism)
     1. [Simple Sum of Descendant Work](#simple-sum-of-descendant-work)
-    2. [Difficulty Adjustment Algorithm](#difficulty-adjustment-algorithm)
+    2. [Difficulty Retarget Algorithm](#difficulty-adjustment-algorithm)
     3. [Miner-Selected Difficulty](#miner-selected-difficulty)
 3. UHPO Payout Commitment
 4. UHPO Root Signing Procedure
@@ -121,7 +121,7 @@ blockchain, however we have the problem that some of the beads are blocks in a
 parent blockchain, and the blockchain has the property that some blocks can be
 orphans and receive no reward. We must dis-incentivize the creation of blocks at
 the same time which might become orphans. One component of this solution is the
-[Difficulty Retarget Algorithm](#difficulty-retarget-algorithm) which maximizes
+[difficulty retarget algorithm](#difficulty-retarget-algorithm) which maximizes
 throughput while minimizing the number of simultaneous beads.
 
 However simultaneous beads will happen naturally due to the faster bead time,
@@ -137,7 +137,7 @@ $$
 where
 
 $$
-\sigma = \frac{T_C}{\rm block time} \left(\frac{\rm pool\ hashrate}{\rm total
+\sigma = \frac{T_C}{\rm block\ time} \left(\frac{\rm pool\ hashrate}{\rm total
 \ hashrate}\right)
 $$
 
