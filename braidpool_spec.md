@@ -234,7 +234,8 @@ $$
     w_{\rm SSDW} = \sum_{i \in \rm descendants} \frac{1}{x_i}
 $$
 
-where $x_i$ is the target difficulty for descendant $i$.
+where $x_i$ is the target difficulty for descendant $i$, and $1/x$ is
+traditionally called the "work".
 
 The SSDW can be optimized by first applying the Cohort algorithm, since all
 beads in a parent cohort have all beads in all descendant cohorts added to their
