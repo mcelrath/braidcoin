@@ -15,7 +15,8 @@ will build upon.
 ## Table of Contents
 
 1. [Shares and Weak Blocks](#shares-and-weak-blocks)
-    1. [Share Value](#share-value)
+    1. [Metadata Commitments](#metadata-commitments)
+    2. [Share Value](#share-value)
 2. [Braid Consensus Mechansim](#braid-consensus-mechanism)
     1. [Simple Sum of Descendant Work](#simple-sum-of-descendant-work)
     2. [Difficulty Retarget Algorithm](#difficulty-adjustment-algorithm)
@@ -30,11 +31,11 @@ A *share* is a "weak block" that is defined as a standard bitcoin block that
 does not meet bitcoin's target difficulty $x_b$, but does meet some lesser
 difficulty target $x$.
 
-The share is itself a bearer proof that $1/x$ sha256 computations have been
-done. The share data structure has additional data that indicates to other
-miners that the share belongs to braidpool, and if it had met bitcoin's
-difficulty target, it contains commitments such that all *other* miners in the
-pool would be paid according to the share tally.
+The share is itself a bearer proof that approximately $w=1/x$ sha256
+computations have been done. The share data structure has additional data that
+indicates to other miners that the share belongs to braidpool, and if it had met
+bitcoin's difficulty target, it contains commitments such that all *other*
+miners in the pool would be paid according to the share tally.
 
 Shares or blocks which do not commit to the additional metadata proving that the
 share is part of the braidpool must be excluded from the share calculation, and
@@ -49,13 +50,15 @@ coinbase transaction, and metadata:
     Version | Previous Block Hash | Merkle Root | Timestamp | Difficulty Target | Nonce
     Coinbase Transaction | Merkle Sibling | Merkle Sibling | ...
     Braidpool Metadata
+    Uncommitted Metadata
 
 The first line is a standard Bitcoin block header.  The `Merkle Siblings` in the
 second line are the additional nodes in the transaction Merkle tree necessary to
 verify that the specified `Coinbase Transaction` transaction is included in the
 `Merkle Root`. This `Coinbase Transaction` commits to any additional data needed
 for the braidpool's [braid consensus mechansim](#braid-consensus-mechanism), in
-an `OP_RETURN` output.
+an `OP_RETURN` output. (FIXME: commit to Braidpool Metadata via pubkey tweak
+instead, and omit the `OP_RETURN`?)
 
 The `Coinbase Transaction` is a standard transaction having no inputs, and
 must have the following outputs:
@@ -69,6 +72,8 @@ such a way that the [braid consensus mechanism](#braid-consensus-mechanism) can
 only spend it in such a way as to pay all hashers in the manner described by its
 share accounting.
 
+## Metadata Commitments
+
 The `<Braidpool Commitment>` is a hash of `Braidpool Metadata` committing to
 additional data required for the operation of the pool. Validation of this share
 requires that the PoW hash of this bitcoin header be less than this weak
@@ -81,7 +86,25 @@ The `Braidpool Metadata` is:
 | `payout_pubkey` | P2TR pubkey for this miner's payout                             |
 | `comm_pubkey`   | secp256k1 pubkey for encrypted DH communication with this miner |
 | `miner IP`      | IP address of this miner                                        |
-| `parents`       | An array of block hashes of parent beads                        |
+| [[`parent`, `timestamp`], ...] | An array of block hashes of parent beads and timestamps when those parents were seen |
+
+The `Uncommitted Metadata` block is intentionally not committed to in the PoW
+mining process. It contains:
+| Field             | Description |
+| -----             | ----------- |
+| `timestamp`       | timestamp when this bead was broadcast |
+| `signature`       | Signature on the Uncommitted Metadata block using the `payout_pubkey` |
+
+The purpose of this data is to gather higher resolution timestamps than are
+possible if the timestamp was committed. All braidpool timestamps are 64-bit
+fields as milliseconds since the Unix epoch. When a block header is sent to
+mining devices, many manufacturers' mining devices do not return for quite some
+time (10-60 seconds) while they compute the hash, which causes PoW-mined
+timestamps to be delayed by this amount. Adding timestamps when parents were
+seen by the node and a timestamp when the bead was broadcast allows the braid to
+compute bead times with much higher precision. Though the data is uncommitted in
+the PoW header, it is signed by a key that is committed in the PoW header, so
+third parties cannot falsify these timestamps.
 
 ## Share Value
 
@@ -139,7 +162,7 @@ $$
 $$
 
 Therefore shares within a cohort containing 2 or more beads must be weighted by
-$1-P_{\ge 2}(T_C)$. Beads which are "blockchain-like" will be counted as full
+$(1-P_{\ge 2}(T_C))$. Beads which are "blockchain-like" will be counted as full
 shares, while beads in larger cohorts will be counted as slightly less than a
 full share by this factor. The value $T_C$ is the cohort time, which is half the
 time difference between the median of the parent cohort's timestamps, and the
@@ -173,8 +196,8 @@ At first glance this algorithm might seem to "punish" lower-target (higher work)
 miners given [miner-selected difficulty](#miner-selected difficulty), however
 because it is directly proportional to work $w=1/x$, it weights high-work miners
 more than low-work miners. So while a low-work miner is more likely to generate
-a cohort with a high-work miner, the reward and share is appropriately
-work-weighted.
+a multi-bead cohort with a high-work miner, the reward and share is
+appropriately work-weighted.
 
 # Braid Consensus Mechanism
 
@@ -203,7 +226,7 @@ ancestors.
 It should be noted that within a braid we keep *all* beads with a valid PoW,
 regardless of whether they are considered invalid in other ways, or contain
 conflicting transactions. Transaction conflict resolution within the Braid is
-decided by the [Work Weighting Algorithm](#work-weighting-algorithm) and doing
+decided by the [work weighting algorithm](#work-weighting-algorithm) and doing
 so requires retaining both sides of the conflict. It is generally possible for
 new work to change which beads are considered in the "main chain", just as in
 Bitcoin new work can cause a reorganization of the chain ("reorg"), which makes
@@ -258,14 +281,14 @@ descendant work *within* a cohort.
 
 ![Cohort time $T(x)$ vs target difficulty $x$](https://github.com/mcelrath/braidcoin/raw/master/T_C_x.png)
 
-The cohort time $T(x)$ in terms of the target difficulty $x$ is well approximated
-by
+The cohort time $T(x)$ in terms of the target difficulty $x$ is well
+approximated (green line in above graph) by
 
 $$
 T(x) = \frac{1}{\lambda x} + a e^{a \lambda x}
 $$
 
-where $a$ is a latency parameter and $\lambda$ a rate parameter given by
+where $a$ is a latency parameter and $\lambda$ is a rate parameter given by
 
 $$
 a = T_C W\left(\frac{T_C}{T_B} - 1 \right); \qquad
