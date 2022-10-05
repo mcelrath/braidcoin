@@ -21,7 +21,7 @@ will build upon.
     1. [Simple Sum of Descendant Work](#simple-sum-of-descendant-work)
     2. [Difficulty Retarget Algorithm](#difficulty-retarget-algorithm)
     3. [Miner-Selected Difficulty](#miner-selected-difficulty)
-3. UHPO Payout Commitment
+3. [Payout Commitment](#payout-commitment)
 4. UHPO Root Signing Procedure
 5. Transaction Selection
 
@@ -49,16 +49,18 @@ header, the coinbase transaction, and metadata:
 
     Version | Previous Block Hash | Merkle Root | Timestamp | Difficulty Target | Nonce
     Coinbase Transaction | Merkle Sibling | Merkle Sibling | ...
+    Payout Commitment | Merkle Sibling | Merkle Sibling | ...
     Braidpool Metadata
     Uncommitted Metadata
 
 The first line is a standard Bitcoin block header.  The `Merkle Siblings` in the
-second line are the additional nodes in the transaction Merkle tree necessary to
-verify that the specified `Coinbase Transaction` transaction is included in the
-`Merkle Root`. This `Coinbase Transaction` commits to any additional data needed
-for the braidpool's [braid consensus mechansim](#braid-consensus-mechanism), in
-an `OP_RETURN` output. (FIXME: commit to Braidpool Metadata via pubkey tweak
-instead, and omit the `OP_RETURN`?)
+second and third linew are the additional nodes in the transaction Merkle tree
+necessary to verify that the specified `Coinbase Transaction` and `Payout
+Commitment` transactions are included in the `Merkle Root`. This `Coinbase
+Transaction` commits to any additional data needed for the braidpool's [braid
+consensus mechansim](#braid-consensus-mechanism), in an `OP_RETURN` output.
+(FIXME: commit to Braidpool Metadata via pubkey tweak instead, and omit the
+`OP_RETURN`?)
 
 The `Coinbase Transaction` is a standard transaction having no inputs, and
 must have the following outputs:
@@ -87,6 +89,7 @@ The `Braidpool Metadata` is:
 | `comm_pubkey`   | secp256k1 pubkey for encrypted DH communication with this miner |
 | `miner IP`      | IP address of this miner                                        |
 | [[`parent`, `timestamp`], ...] | An array of block hashes of parent beads and timestamps when those parents were seen |
+| [
 
 The `Uncommitted Metadata` block is intentionally not committed to in the PoW
 mining process. It contains:
@@ -318,7 +321,7 @@ $$
 This minimum corresponds to the fastest possible cohort time, and the most
 frequent global consensus achievable in a braid. For smaller target difficulty
 $x \to 0$, the braid becomes blockchain-like, and
-$T(x) \xrightarrow[x\rightarrow\0]{} (\lambda x)^{-1} + a + \mathcal{O}(x)$,
+$T(x) \xrightarrow[x\rightarrow 0]{} (\lambda x)^{-1} + a + \mathcal{O}(x)$,
 showing that the parameter a is the increase in effective block time due to
 network latency effects. In the opposite limit $x \to \infty$, cohorts become
 large, meaning that beads cannot be total ordered, double-spend conflicts cannot
@@ -361,17 +364,41 @@ the fastest possible bead time without resorting to allocating more miners to
 
 # Payout Commitment
 
-The Payout Commitment is the coinbase output on bitcoin, containing all funds
-from the block reward and fees in this block. This payout must commit to the
-share payout structure as calculated at the time the block is mined.  In other
-words, it must represent and commit to the consensus of the decentralized mining
-pool's share accounting.
+The Payout Commitment is a separate transaction from the coinbase transaction
+that aggregates previous coinbase outputs into a single new output. This output
+contains all funds from the block reward and fees in this and all past blocks.
+This payout must commit to the share payout structure as calculated at the time
+the block is mined.  In other words, it must represent and commit to the
+consensus of the decentralized mining pool's share accounting.
 
 Validating the output of the [consensus mechanism](#consensus-mechanism) is well
 beyond the capability of bitcoin script. Therefore generally one must find a
 mechanism such that a supermajority (Byzantine Fault Tolerant subset) of
 braidpool participants can sign the output, which is essentially reflecting the
-consensus about share payments into bitcoin.
+consensus about share payments into bitcoin. This is done by having a single
+P2TR public key which is controlled by a Byzantine fault tolerant supermajority
+of miners which must cooperate to sign the output.
+
+The payout is a rolling commitment that spends the previous payout commitment
+output and creates a new one including rewards and fees from the new block. This
+must be signed with `SIGHASH_ANYONECANPAY` so that the output amount is
+uncommitted in the sighash. Since each miner may choose different transactions,
+the exact amount of the fee reward in this block cannot be known until a block
+is successfully mined, and we cannot commit to this value.
+
+Since newly created coinbase outputs cannot be spent for 100 blocks due to a
+bitcoin consensus rule, the Payout Commitment transaction is always 100 blocks
+in arrears. The transaction that must be included in a bead spends the most
+recent braidpool coinbase that's at least 100 blocks old into a new Payout
+Commitment output.
+
+![On-Chain Eltoo from the Eltoo paper](https://github.com/mcelrath/braidcoin/raw/master/eltoo.png)
+
+This rolling set of payout commitments is an on-chain version of the [Eltoo
+protocol](https://blockstream.com/eltoo.pdf). By spending the previous Payout
+Commitment, we automatically invalidate the previous UHPO payout tree, and
+replace it with a new one. Relative to the Eltoo diagram above, $T_{u,i}$ are
+Payout Commitment outputs, and $T_{s,i}$ are UHPO payout transactions.
 
 ## The Unspent Hasher Payment Output (UHPO) mechanism
 
