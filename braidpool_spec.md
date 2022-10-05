@@ -19,7 +19,7 @@ will build upon.
     2. [Share Value](#share-value)
 2. [Braid Consensus Mechansim](#braid-consensus-mechanism)
     1. [Simple Sum of Descendant Work](#simple-sum-of-descendant-work)
-    2. [Difficulty Retarget Algorithm](#difficulty-adjustment-algorithm)
+    2. [Difficulty Retarget Algorithm](#difficulty-retarget-algorithm)
     3. [Miner-Selected Difficulty](#miner-selected-difficulty)
 3. UHPO Payout Commitment
 4. UHPO Root Signing Procedure
@@ -318,7 +318,7 @@ $$
 This minimum corresponds to the fastest possible cohort time, and the most
 frequent global consensus achievable in a braid. For smaller target difficulty
 $x \to 0$, the braid becomes blockchain-like, and
-$T(x) {\Longrightarrow \ontop x \to 0} (\lambda x)^{-1} + a + \mathcal{O}(x)$,
+$T(x) {\Longrightarrow \choose x \to 0} (\lambda x)^{-1} + a + \mathcal{O}(x)$,
 showing that the parameter a is the increase in effective block time due to
 network latency effects. In the opposite limit $x \to \infty$, cohorts become
 large, meaning that beads cannot be total ordered, double-spend conflicts cannot
