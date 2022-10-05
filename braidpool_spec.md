@@ -318,7 +318,7 @@ $$
 This minimum corresponds to the fastest possible cohort time, and the most
 frequent global consensus achievable in a braid. For smaller target difficulty
 $x \to 0$, the braid becomes blockchain-like, and
-$T(x) {\longrightarrow \over x \to 0} (\lambda x)^{-1} + a + \mathcal{O}(x)$,
+$T(x) {\Longrightarrow \ontop x \to 0} (\lambda x)^{-1} + a + \mathcal{O}(x)$,
 showing that the parameter a is the increase in effective block time due to
 network latency effects. In the opposite limit $x \to \infty$, cohorts become
 large, meaning that beads cannot be total ordered, double-spend conflicts cannot
