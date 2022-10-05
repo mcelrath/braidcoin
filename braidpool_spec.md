@@ -44,8 +44,8 @@ sha256 header to a braidpool node must not count as a share contribution unless
 the ultimate payout for that share, had it become a bitcoin block, would have
 paid all members of the pool in such a way that all other hashers are paid.
 
-A braidpool "share" is a data structure containing a bitcoin block header, the
-coinbase transaction, and metadata:
+A braidpool "share" or "bead" is a data structure containing a bitcoin block
+header, the coinbase transaction, and metadata:
 
     Version | Previous Block Hash | Merkle Root | Timestamp | Difficulty Target | Nonce
     Coinbase Transaction | Merkle Sibling | Merkle Sibling | ...
@@ -93,7 +93,7 @@ mining process. It contains:
 | Field             | Description |
 | -----             | ----------- |
 | `timestamp`       | timestamp when this bead was broadcast |
-| `signature`       | Signature on the Uncommitted Metadata block using the `payout_pubkey` |
+| `signature`       | Signature on the `Uncommitted Metadata` block using the `payout_pubkey` |
 
 The purpose of this data is to gather higher resolution timestamps than are
 possible if the timestamp was committed. All braidpool timestamps are 64-bit
@@ -166,13 +166,11 @@ $(1-P_{\ge 2}(T_C))$. Beads which are "blockchain-like" will be counted as full
 shares, while beads in larger cohorts will be counted as slightly less than a
 full share by this factor. The value $T_C$ is the cohort time, which is half the
 time difference between the median of the parent cohort's timestamps, and the
-median of the descendant cohort's timestamps.
+median of the descendant cohort's timestamps. Here we use only the timestamps
+as witnessed by descendants, not the claimed broadcast time by the miner in
+`Uncommitted Metadata`.
 
-# FIXME this seems to punish lower-target miners.
-# FIXME use parent and child cohort times? Measuring time...
-# Is it appropriate to apply this factor to even blockchain-like beads?
-# Median timestamp of parent cohort minus median timestamp of child cohort?
-# Insert parent observed timestamp?
+(FIXME: Is it appropriate to apply this factor to even blockchain-like beads?)
 
 As $T_C$ grows, the value of shares decreases. Therefore an attacker attempting
 to reorganize transactions or execute a selfish mining attack will see the value
@@ -193,7 +191,7 @@ and is a statistical estimate of the number of sha256d computations performed by
 the miner.
 
 At first glance this algorithm might seem to "punish" lower-target (higher work)
-miners given [miner-selected difficulty](#miner-selected difficulty), however
+miners given [miner-selected difficulty](#miner-selected-difficulty), however
 because it is directly proportional to work $w=1/x$, it weights high-work miners
 more than low-work miners. So while a low-work miner is more likely to generate
 a multi-bead cohort with a high-work miner, the reward and share is
@@ -244,7 +242,9 @@ reject it for the following reasons:
    the first three of the beads in this cohort.
 
 2. It is impossible in practice to reliably identify "honest" and "attacking"
-   nodes. There is only latency, which we can measure and take account of.
+   nodes. There is only latency, which we can measure and take account of. Even
+   in the absence of attackers, cohorts exceeding the k-width happen naturally
+   and cannot be prevented.
 
 ## Simple Sum of Descendant Work
 
@@ -260,7 +260,8 @@ transaction conflict resolution.
 
 For conflict resolution, we choose the Simple Sum of Descendant Work (SSDW),
 which is the sum of work among descendants for each bead, disregarding any graph
-structure. Graph structure is manipulable at zero cost, therefore we must have a
+structure. This is the direct analog of Nakamoto's "longest chain/highest work"
+rule.  Graph structure is manipulable at zero cost, therefore we must have a
 conflict resolution algorithm that is independent of graph structure, lest we
 create a game which can be played to give a non-work advantage to an attacking
 miner which he could use to reverse transactions. The SSDW work is:
@@ -317,12 +318,12 @@ $$
 This minimum corresponds to the fastest possible cohort time, and the most
 frequent global consensus achievable in a braid. For smaller target difficulty
 $x \to 0$, the braid becomes blockchain-like, and
-$T(x) \to (\lambda x)^{-1} + a + \mathcal{O}(x)$, showing that the parameter a
-is the increase in effective block time due to network latency effects. In the
-opposite limit $x \to \infty$, cohorts become large, meaning that beads cannot
-be total ordered, double-spend conflicts cannot be resolved, and global
-consensus is never achieved. In this limit the cohort time increases
-exponentially, so we cannot let $x$ get too large.
+$T(x) {\longrightarrow \over x \to 0} (\lambda x)^{-1} + a + \mathcal{O}(x)$,
+showing that the parameter a is the increase in effective block time due to
+network latency effects. In the opposite limit $x \to \infty$, cohorts become
+large, meaning that beads cannot be total ordered, double-spend conflicts cannot
+be resolved, and global consensus is never achieved. In this limit the cohort
+time increases exponentially, so we cannot let $x$ get too large.
 
 This gives us a zero-parameter retargeting algorithm. At any time we can
 evaluate $x_0$, which represents a maximum target difficulty that the braid will
