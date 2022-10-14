@@ -6,10 +6,10 @@ Herein we present the specification for a decentralized mining pool we name
 [General Considerations for Decentralized Mining
 Pools](https://github.com/mcelrath/braidcoin/blob/master/general_considerations.md)
 which has relevant general discussion omitted from this document.  The sections
-below correspond to the sections in that document, describing how braidpool will
+below correspond to the sections in that document, describing how Braidpool will
 solve each of the indicated issues.  Orthogonal considerations including
 encrypted miner communication is being pursued by the
-[StratumV2](https://github.com/stratum-mining/sv2-spec) project, which braidpool
+[StratumV2](https://github.com/stratum-mining/sv2-spec) project, which Braidpool
 will build upon.
 
 ## Table of Contents
@@ -21,8 +21,9 @@ will build upon.
     1. [Simple Sum of Descendant Work](#simple-sum-of-descendant-work)
     2. [Difficulty Retarget Algorithm](#difficulty-retarget-algorithm)
     3. [Miner-Selected Difficulty](#miner-selected-difficulty)
-3. [Payout Commitment](#payout-commitment)
-4. UHPO Root Signing Procedure
+3. [Payout Update](#payout-commitment)
+    1. [Unspent Hasher Payment Output](#unspent-hasher-payment-output)
+4. [Payout Update and Settlement Signing](#payout-update-and-settlement-signing)
 5. Transaction Selection
 
 # Shares and Weak Blocks
@@ -33,23 +34,23 @@ difficulty target $x$.
 
 The share is itself a bearer proof that approximately $w=1/x$ sha256
 computations have been done. The share data structure has additional data that
-indicates to other miners that the share belongs to braidpool, and if it had met
+indicates to other miners that the share belongs to Braidpool, and if it had met
 bitcoin's difficulty target, it contains commitments such that all *other*
 miners in the pool would be paid according to the share tally.
 
 Shares or blocks which do not commit to the additional metadata proving that the
-share is part of the braidpool must be excluded from the share calculation, and
+share is part of the Braidpool must be excluded from the share calculation, and
 those miners are not "part of" the pool. In other words, submitting a random
-sha256 header to a braidpool node must not count as a share contribution unless
+sha256 header to a Braidpool node must not count as a share contribution unless
 the ultimate payout for that share, had it become a bitcoin block, would have
 paid all members of the pool in such a way that all other hashers are paid.
 
-A braidpool "share" or "bead" is a data structure containing a bitcoin block
+A Braidpool "share" or "bead" is a data structure containing a bitcoin block
 header, the coinbase transaction, and metadata:
 
     Version | Previous Block Hash | Merkle Root | Timestamp | Difficulty Target | Nonce
     Coinbase Transaction | Merkle Sibling | Merkle Sibling | ...
-    Payout Commitment | Merkle Sibling | Merkle Sibling | ...
+    Payout Update | Merkle Sibling | Merkle Sibling | ...
     Braidpool Metadata
     Uncommitted Metadata
 
@@ -57,7 +58,7 @@ The first line is a standard Bitcoin block header.  The `Merkle Siblings` in the
 second and third linew are the additional nodes in the transaction Merkle tree
 necessary to verify that the specified `Coinbase Transaction` and `Payout
 Commitment` transactions are included in the `Merkle Root`. This `Coinbase
-Transaction` commits to any additional data needed for the braidpool's [braid
+Transaction` commits to any additional data needed for the Braidpool's [braid
 consensus mechansim](#braid-consensus-mechanism), in an `OP_RETURN` output.
 (FIXME: commit to Braidpool Metadata via pubkey tweak instead, and omit the
 `OP_RETURN`?)
@@ -89,7 +90,6 @@ The `Braidpool Metadata` is:
 | `comm_pubkey`   | secp256k1 pubkey for encrypted DH communication with this miner |
 | `miner IP`      | IP address of this miner                                        |
 | [[`parent`, `timestamp`], ...] | An array of block hashes of parent beads and timestamps when those parents were seen |
-| [
 
 The `Uncommitted Metadata` block is intentionally not committed to in the PoW
 mining process. It contains:
@@ -99,7 +99,7 @@ mining process. It contains:
 | `signature`       | Signature on the `Uncommitted Metadata` block using the `payout_pubkey` |
 
 The purpose of this data is to gather higher resolution timestamps than are
-possible if the timestamp was committed. All braidpool timestamps are 64-bit
+possible if the timestamp was committed. All Braidpool timestamps are 64-bit
 fields as milliseconds since the Unix epoch. When a block header is sent to
 mining devices, many manufacturers' mining devices do not return for quite some
 time (10-60 seconds) while they compute the hash, which causes PoW-mined
@@ -113,14 +113,14 @@ third parties cannot falsify these timestamps.
 
 A great many [share payout
 algorithms](https://medium.com/luxor/mining-pool-payment-methods-pps-vs-pplns-ac699f44149f)
-have been proposed and used by pools. Because braidpool will not collect fees
+have been proposed and used by pools. Because Braidpool will not collect fees
 and has no source of funds other than block rewards with which pay hashers, it
 will use the **Full Proportional** method, meaning that all rewards and fees are
 fully distributed to hashers proportionally to their contributed shares. Closely
 related methods like Pay Per Share (PPS) allow the pool operator to earn the
 fees, but a decentralized mining pool has no operator which could/should be
 earning these fees. While many projects have inserted a "developer donation", we
-feel that braidpool is an open source public good that should be developed and
+feel that Braidpool is an open source public good that should be developed and
 maintained by the community, without the political drama of who and how to pay
 with a source of funds.
 
@@ -128,10 +128,10 @@ With PPS-type methods, most centralized pool operators are taking a risk on
 paying immediately for shares, therefore absorbing the variance risk involved in
 "luck". For hashers that desire immediate payout this can be achieved using any
 third party willing to buy their shares and take on the risk management of
-"luck" and fee variance. It's not necessary or desirable for braidpool itself to
+"luck" and fee variance. It's not necessary or desirable for Braidpool itself to
 subsume this risk management function. It is logical to allow professional risk
 management firms to take it on by directly buying shares. We envision that
-existing pools might run on top of braidpool and continue to perform this risk
+existing pools might run on top of Braidpool and continue to perform this risk
 management function for their clients.
 
 Other payout algorithms such as Pay Per Last N Shares (PPLNS) were created
@@ -281,6 +281,9 @@ beads in a parent cohort have all beads in all descendant cohorts added to their
 work. Therefore, the only thing that matters for conflict resolution is
 descendant work *within* a cohort.
 
+In the event that two beads containing conflicting transactions have exactly the
+same SSDW, the one with the lower hash ("luck") will be selected.
+
 ## Difficulty Retarget Algorithm
 
 ![Cohort time $T(x)$ vs target difficulty $x$](https://github.com/mcelrath/braidcoin/raw/master/T_C_x.png)
@@ -352,34 +355,39 @@ is expected to produce on average one bead per bitcoin block. For miners smaller
 than this they will be allocated to a [Sub-Pool](#sub-pools).
 
 Note that this equal-variance target is not enforceable by consensus. A miner
-could choose to run multiple braidpool instances or just change the code to
-select a different target, and the braidpool software-selected target is an
+could choose to run multiple Braidpool instances or just change the code to
+select a different target, and the Braidpool software-selected target is an
 unenforceable recommendation. The consequence of a miner ignoring this
 recommendation would be to decrease a single miner's variance at the expense of
 producing more beads in the braid for the same amount of work. This slows down
 the braid and increases the bead time. Accepting this equal-variance target
-allows braidpool to accommodate the maximum number of miners, the most work, and
+allows Braidpool to accommodate the maximum number of miners, the most work, and
 the fastest possible bead time without resorting to allocating more miners to
 [Sub-Pools](#sub-pools).
 
-# Payout Commitment
+# Payout Update
 
-The Payout Commitment is a separate transaction from the coinbase transaction
+The Payout Update is a separate transaction from the coinbase transaction
 that aggregates previous coinbase outputs into a single new output. This output
 contains all funds from the block reward and fees in this and all past blocks.
 This payout must commit to the share payout structure as calculated at the time
 the block is mined.  In other words, it must represent and commit to the
-consensus of the decentralized mining pool's share accounting.
+consensus of the decentralized mining pool's share accounting. This transaction
+has two inputs and one output
+
+    Input (1): <existing Braidpool payout update UTXO>
+    Input (2): <block N-100 coinbase output>
+    Outputs (1): <new Braidpool payout update UTXO>
 
 Validating the output of the [consensus mechanism](#consensus-mechanism) is well
 beyond the capability of bitcoin script. Therefore generally one must find a
 mechanism such that a supermajority (Byzantine Fault Tolerant subset) of
-braidpool participants can sign the output, which is essentially reflecting the
+Braidpool participants can sign the output, which is essentially reflecting the
 consensus about share payments into bitcoin. This is done by having a single
 P2TR public key which is controlled by a Byzantine fault tolerant supermajority
 of miners which must cooperate to sign the output.
 
-The payout is a rolling commitment that spends the previous payout commitment
+The payout is a rolling commitment that spends the previous payout update
 output and creates a new one including rewards and fees from the new block. This
 must be signed with `SIGHASH_ANYONECANPAY` so that the output amount is
 uncommitted in the sighash. Since each miner may choose different transactions,
@@ -387,20 +395,28 @@ the exact amount of the fee reward in this block cannot be known until a block
 is successfully mined, and we cannot commit to this value.
 
 Since newly created coinbase outputs cannot be spent for 100 blocks due to a
-bitcoin consensus rule, the Payout Commitment transaction is always 100 blocks
+bitcoin consensus rule, the Payout Update transaction is always 100 blocks
 in arrears. The transaction that must be included in a bead spends the most
-recent braidpool coinbase that's at least 100 blocks old into a new Payout
+recent Braidpool coinbase that's at least 100 blocks old into a new Payout
 Commitment output.
 
 ![On-Chain Eltoo from the Eltoo paper](https://github.com/mcelrath/braidcoin/raw/master/eltoo.png)
 
-This rolling set of payout commitments is an on-chain version of the [Eltoo
+This rolling set of payout updates is an on-chain version of the [Eltoo
 protocol](https://blockstream.com/eltoo.pdf). By spending the previous Payout
-Commitment, we automatically invalidate the previous UHPO payout tree, and
-replace it with a new one. Relative to the Eltoo diagram above, $T_{u,i}$ are
-Payout Commitment outputs, and $T_{s,i}$ are UHPO payout transactions.
+Update, we automatically invalidate the previous UHPO payout tree, and replace
+it with a new one. Old UHPO settlement transactions can no longer be broadcast
+as they would be double-spends. Relative to the Eltoo diagram above, $T_{u,i}$
+are Payout Commitment outputs, and $T_{s,i}$ are UHPO payout transactions.
 
-## The Unspent Hasher Payment Output (UHPO) mechanism
+Note that the most common discussions around Eltoo revolve around holding the
+update transactions off-chain using a NOINPUT or ANYPREVOUT flag. In our case,
+there is really no good reason to hold these updates off-chain nor wait for
+these transaction flags to be deployed. These update transactions must be held
+by Braidpool nodes between the time that they are signed and mined into a
+block.
+
+## Unspent Hasher Payment Output
 
 For the payout commitment we present a new and simple record accounting for
 shares. Consider the consensus mechanism as a UTXO-based blockchain analagous to
@@ -446,39 +462,22 @@ This would take the form of a special message or transaction sent to the pool
 UHPO set transaction, and create a new separate transaction which pays that
 hasher, [authorizes](#payout-authorization) it, and broadcasts it to bitcoin.
 
-## Rolling Coinbase Aggregation
+# Payout Update and Settlement Signing
 
-Each block produces a new coinbase output, and an update to the [UHPO
-set](#the-unspent-hasher-payment-output-UHPO). In order to simplify the UHPO
-outputs, we will *aggregate* the existing coinbases. In addition to the
-coinbase, each block mined by braidpool must additionally have a transaction
-having two inputs and one output
+Once a bitcoin block is mined by the pool, Braidpool will kick off a signing
+ceremony to create a new Payout Commitment and
 
-    Input (1): <existing braidpool aggregate UTXO>
-    Input (2): <block N-100 coinbase output>
-    Outputs (1): <new braidpool aggregate UTXO>
-
-which merges the existing UHPO root with the new spendable output. We must write
-this transaction only for coinbases older than 100 blocks because of bitcoin's
-coinbase maturity rule.
-
-This transaction is created *after* a block is successfully mined by braidpool,
-since the extranonce used by mining devices changes the coinbase txid, we can't
-sign this transaction until its Input(2) txid is known.  (Unless we have
-ANYPREVOUT, but there is not really any reason to sign
+It is impossible or impractical to sign the payout update and UHPO set
+transactions prior to mining a block, because the extranonce used by mining
+devices changes the coinbase txid, we can't sign this transaction until its
+Input(2) txid is known.
 
 After the RCA transaction is signed, and its corresponding UHPO transaction is
-signed, spending the RCA's output, braidpool nodes will *delete* the
+signed, spending the RCA's output, Braidpool nodes will *delete* the
 corresponding key shares and keys associated with signing these. As long as
 $n-t$ nodes successfully delete these shares and keys, and the RCA and UHPO
 transactions are distributed to all nodes, it then becomes impossible to spend
-the aggregated braidpool funds in any other way.
-
-This is very similar to the "On-Chain Update Protocol" (Sec 3) of the
-[Eltoo](https://blockstream.com/eltoo.pdf) paper. Because in each block we
-update the RCA output, it automatically invalidates the share payout of the
-previous UHPO transaction. Broadcasting an old UHPO transaction would be a
-double spend with the RCA transaction. Only one of the two can be accepted.
+the aggregated Braidpool funds in any other way.
 
 FIXME should update and settlement keys be different here?
 
@@ -493,7 +492,7 @@ FIXME pre-kegen and ROAST parallel signing
 FIXME use nlocktime or CSV? CSV would separate the update and settlement
 transactions.
 
-FIXME what do we do with any coinbases mined by braidpool after the settlement
+FIXME what do we do with any coinbases mined by Braidpool after the settlement
 tx is broadcast? CSV and let the miner take it all?
 
 FIXME from eltoo paper: "The use of different key-pairs prevents an attacker
