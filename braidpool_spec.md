@@ -48,11 +48,12 @@ paid all members of the pool in such a way that all other hashers are paid.
 A Braidpool "share" or "bead" is a data structure containing a bitcoin block
 header, the coinbase transaction, and metadata:
 
-    Version | Previous Block Hash | Merkle Root | Timestamp | Difficulty Target | Nonce
-    Coinbase Transaction | Merkle Sibling | Merkle Sibling | ...
-    Payout Update | Merkle Sibling | Merkle Sibling | ...
-    Braidpool Metadata
-    Uncommitted Metadata
+| Field   | Description |
+| `blockheader` | `Version | Previous Block Hash | Merkle Root | Timestamp | Difficulty Target | Nonce` |
+| `coinbase`    | `Coinbase Transaction | Merkle Sibling | Merkle Sibling | ...` |
+| `payout`      | `Payout Update | Merkle Sibling | Merkle Sibling | ...` |
+| `metadata`    | Braidpool Metadata (see below) |
+| `un_metadata` | Uncommitted Metadata (see below) |
 
 The first line is a standard Bitcoin block header.  The `Merkle Siblings` in the
 second and third linew are the additional nodes in the transaction Merkle tree
