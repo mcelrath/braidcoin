@@ -50,7 +50,7 @@ header, the coinbase transaction, and metadata:
 
 | Field      | Description |
 | ---------- | ----------- |
-| `blockheader` | `Version, Previous Block Hash, Merkle Root, Timestamp, Difficulty Target, Nonce` |
+| `blockheader` | `Version, Previous Block Hash, Merkle Root, Timestamp, Target, Nonce` |
 | `coinbase`    | `Coinbase Txn, Merkle Sibling, Merkle Sibling, ...` |
 | `payout`      | `Payout Update Txn, Merkle Sibling, Merkle Sibling, ...` |
 | `metadata`    | `Braidpool Metadata` (see below) |
