@@ -57,13 +57,14 @@ header, the coinbase transaction, and metadata:
 | `un_metadata` | `Uncommitted Metadata` (see below) |
 
 The first line is a standard Bitcoin block header.  The `Merkle Siblings` in the
-second and third linew are the additional nodes in the transaction Merkle tree
+second and third line are the additional nodes in the transaction Merkle tree
 necessary to verify that the specified `Coinbase Transaction` and `Payout
 Commitment` transactions are included in the `Merkle Root`. This `Coinbase
 Transaction` commits to any additional data needed for the Braidpool's [braid
 consensus mechansim](#braid-consensus-mechanism), in an `OP_RETURN` output.
-(FIXME: commit to Braidpool Metadata via pubkey tweak instead, and omit the
-`OP_RETURN`?)
+While we could commit to this data in a more space-efficient manner (e.g. via a
+pubkey tweak), the coinbase is also the location of the `extranonce` 8-byte
+field used by some mining equipment.
 
 The `Coinbase Transaction` is a standard transaction having no inputs, and
 must have the following outputs:
@@ -480,7 +481,7 @@ share/BTC price for that epoch is known.
 # Payout Update and Settlement Signing
 
 Once a bitcoin block is mined by the pool, Braidpool will kick off a signing
-ceremony to create a new Payout Commitment and
+ceremony to create a new Payout Commitment and UHPO settlement transaction.
 
 It is impossible or impractical to sign the payout update and UHPO set
 transactions prior to mining a block, because the extranonce used by mining
