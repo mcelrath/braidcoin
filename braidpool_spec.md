@@ -12,6 +12,10 @@ encrypted miner communication is being pursued by the
 [StratumV2](https://github.com/stratum-mining/sv2-spec) project, which Braidpool
 will build upon.
 
+[kp] We don't need stratum v2 at all. If the grinding machines talk to a
+braidpool controller hosted on their facility, then the need for a secure
+communication layer to a pool operator disappears. [/kp]
+
 ## Table of Contents
 
 1. [Shares and Weak Blocks](#shares-and-weak-blocks)
