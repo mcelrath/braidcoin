@@ -16,6 +16,16 @@ will build upon.
 braidpool controller hosted on their facility, then the need for a secure
 communication layer to a pool operator disappears. [/kp]
 
+[kp]
+
+I know we had a lot of intro in the general considerations document, but we need
+an intro here. We also need an overview of all the components that work together
+to constitute braidpool. I had a little layered architecture diagram in the
+proposal. It helps people quickly get an overview of what the rest of the
+document is going to cover.
+
+[/kp]
+
 ## Table of Contents
 
 1. [Shares and Weak Blocks](#shares-and-weak-blocks)
@@ -36,11 +46,12 @@ A *share* is a "weak block" that is defined as a standard bitcoin block that
 does not meet bitcoin's target difficulty $x_b$, but does meet some lesser
 difficulty target $x$.
 
-The share is itself a bearer proof that approximately $w=1/x$ sha256
-computations have been done. The share data structure has additional data that
-indicates to other miners that the share belongs to Braidpool, and if it had met
-bitcoin's difficulty target, it contains commitments such that all *other*
-miners in the pool would be paid according to the share tally.
+The share is itself a bearer proof that the issuer has generated $w$ sha256
+hashes with the block merkle root as the input. $w$ is proportional to
+$1/x$. The share data structure has additional data that indicates to other
+miners that the share belongs to Braidpool, and if it had met bitcoin's
+difficulty target, it contains commitments such that all *other* miners in the
+pool would be paid according to the share tally.
 
 Shares or blocks which do not commit to the additional metadata proving that the
 share is part of the Braidpool must be excluded from the share calculation, and
@@ -60,6 +71,7 @@ header, the coinbase transaction, and metadata:
 | `metadata`    | `Braidpool Metadata` (see below) |
 | `un_metadata` | `Uncommitted Metadata` (see below) |
 
+
 The first line is a standard Bitcoin block header.  The `Merkle Siblings` in the
 second and third line are the additional nodes in the transaction Merkle tree
 necessary to verify that the specified `Coinbase Transaction` and `Payout
@@ -70,17 +82,49 @@ While we could commit to this data in a more space-efficient manner (e.g. via a
 pubkey tweak), the coinbase is also the location of the `extranonce` 8-byte
 field used by some mining equipment.
 
+[kp]
+
+I don't know why you are talking about the consensus mechanism in the above
+paragraph. We are jumping into these details too quickly. Usually you would:
+
+
+1. Identify all components
+2. Provide an over view of all components
+3. Show how the various components together, i.e. the interfaces between them
+4. Finally you dig into each component.
+
+We are doing 4. here straight away. People will be very confused when reading
+this.
+
+[/kp]
+
+
 The `Coinbase Transaction` is a standard transaction having no inputs, and
 must have the following outputs:
 
     OutPoint(Value:0, scriptPubKey OP_RETURN "BP"+<Braidpool Commitment>+<extranonce>)
     OutPoint(Value:<block reward>, scriptPubKey <P2TR pool_pubkey>)
+	
+[kp]
+
+Why P2TR? Are we just being fancy, or do we really need it? If so, let's
+motivate why and explain it clearly.
+
+[/kp]
 
 The `<block reward>` is the sum of all fees and block reward for this halving
 epoch, and `pool_pubkey` is an address controlled collaboratively by the pool in
 such a way that the [braid consensus mechanism](#braid-consensus-mechanism) can
 only spend it in such a way as to pay all hashers in the manner described by its
 share accounting.
+
+[kp]
+
+How is the block reward calculated? You seem to say it is for all halving. Is it
+simply the sum of all braidpool found blocks in the halving period? We should
+write out a simple formula to capture it precisely.
+
+[/kp]
 
 ## Metadata Commitments
 
@@ -98,6 +142,16 @@ The `Braidpool Metadata` is:
 | `miner IP`      | IP address of this miner                                        |
 | [[`parent`, `timestamp`], ...] | An array of block hashes of parent beads and timestamps when those parents were seen |
 
+[kp]
+
+Again, why p2tr?
+
+Why do we need timestamp in the parent pointers? I don't think we need it. Time
+is relative anyway :) All the parent pointer captures is "happens before"
+relationship.
+
+[/kp]
+
 The `Uncommitted Metadata` block is intentionally not committed to in the PoW
 mining process. It contains:
 | Field             | Description |
@@ -107,19 +161,36 @@ mining process. It contains:
 
 The purpose of this data is to gather higher resolution timestamps than are
 possible if the timestamp was committed. All Braidpool timestamps are 64-bit
-fields as milliseconds since the Unix epoch. When a block header is sent to
-mining devices, many manufacturers' mining devices do not return for quite some
-time (10-60 seconds) while they compute the hash, which causes PoW-mined
-timestamps to be delayed by this amount. Adding timestamps when parents were
-seen by the node and a timestamp when the bead was broadcast allows the braid to
-compute bead times with much higher precision. Though the data is uncommitted in
-the PoW header, it is signed by a key that is committed in the PoW header, so
-third parties cannot falsify these timestamps.
+fields as milliseconds since the Unix epoch [kp]You can simply say unix
+timestamps.[/kp]. When a block header is sent to mining devices, many
+manufacturers' mining devices do not return for quite some time (10-60 seconds)
+while they compute the hash, which causes PoW-mined timestamps to be delayed by
+this amount. Adding timestamps when parents were seen by the node and a
+timestamp when the bead was broadcast allows the braid to compute bead times
+with much higher precision. Though the data is uncommitted in the PoW header, it
+is signed by a key that is committed in the PoW header, so third parties cannot
+falsify these timestamps.
+
+[kp]
+
+> Adding timestamps when parents were seen by the node and a timestamp when the
+> bead was broadcast allows the braid to compute bead times with much higher
+> precision.
+
+Why is this important? Let's explain that before we provide a solution to the
+problem.
+
+[/kp]
 
 ## Share Value
 
 A great many [share payout
 algorithms](https://medium.com/luxor/mining-pool-payment-methods-pps-vs-pplns-ac699f44149f)
+
+[kp]
+Add referent to Meni Rosenfeld's work here: https://arxiv.org/abs/1112.4980
+[/kp]
+
 have been proposed and used by pools. Because Braidpool will not collect fees
 and has no source of funds other than block rewards with which pay hashers, it
 will use the **Full Proportional** method, meaning that all rewards and fees are
@@ -131,9 +202,21 @@ feel that Braidpool is an open source public good that should be developed and
 maintained by the community, without the political drama of who and how to pay
 with a source of funds.
 
+[kp]
+
+> While many projects have inserted a "developer donation", we feel that
+> Braidpool is an open source public good that should be developed and maintained
+> by the community, without the political drama of who and how to pay with a
+> source of funds.
+
+I'd remove this. Claiming we are above politics, is politics. I'd prefer we
+don't even mention the nonsense.
+
+[/kp]
+
 With PPS-type methods, most centralized pool operators are taking a risk on
 paying immediately for shares, therefore absorbing the variance risk involved in
-"luck". For hashers that desire immediate payout this can be achieved using any
+"luck". For hashers that want immediate payout, this can be achieved using any
 third party willing to buy their shares and take on the risk management of
 "luck" and fee variance. It's not necessary or desirable for Braidpool itself to
 subsume this risk management function. It is logical to allow professional risk
@@ -146,13 +229,37 @@ primarily to discourage pool hopping. We don't feel that this is needed in the
 modern day and a smoothing function applied to payouts interferes with the
 notion of using shares as a hashrate derivative instrument.
 
-A purely work-weighted proportional algorithm would work for a pure-DAG
+[kp]
+
+I like PPLNS as it does exactly that - prevents pool hopping. By not addressing
+this we are leaving braidpool vulnerable to future innovations in markets and
+pool operations. Why do you feel this is not a problem anymore. If we want to
+leave PPLNS out of braidpool, we need a more convincing argument. I'd argue for
+PPLNS and reference Meni's work.
+
+You could say, braidpool allows for any accounting scheme on top of the
+eventually consistent view of shares. On that note, we should talk about the
+eventually consistency of shares view in the broadcast section. This again makes
+me think we need that overview section with a system architecture diagram where
+each component has clearly defined responsibilities.
+
+[/kp]
+
+A purely work-weighted proportional algorithm will work for a pure-DAG
 blockchain, however we have the problem that some of the beads are blocks in a
 parent blockchain, and the parent blockchain has the property that some blocks
 can be orphans and receive no reward. We must dis-incentivize the creation of
 blocks which might become orphans. One component of this solution is the
 [difficulty retarget algorithm](#difficulty-retarget-algorithm) which maximizes
 throughput while minimizing the number of simultaneous beads.
+
+[kp]
+
+Is this really a problem? We make payouts after 100 blocks, as does bitcoin,
+that is enough time to be sure the block is not going to be orphaned.
+
+
+[/kp]
 
 However simultaneous beads will happen naturally due to the faster bead time,
 latency, and attackers. Within a time window $T_C$ (the cohort time), the
@@ -180,12 +287,32 @@ median of the descendant cohort's timestamps. Here we use only the timestamps
 as witnessed by descendants, not the claimed broadcast time by the miner in
 `Uncommitted Metadata`.
 
+[kp]
+
+There is new terminology here which the reader has not been introduced
+to. Things like cohort and cohort time. We should explain these terms before
+using them.
+
+[/kp]
+
 (FIXME: Is it appropriate to apply this factor to even blockchain-like beads?)
 
 As $T_C$ grows, the value of shares decreases. Therefore an attacker attempting
 to reorganize transactions or execute a selfish mining attack will see the value
 of his shares decrease in an appropriate way corresponding to how likely it is
 that he generates an orphan and reduces the profit of the pool.
+
+[kp]
+
+Reducing share weight is problematic. 
+
+A miner, does work X over time, the entire work done by braidpool is Y by the
+time BP finds a bitoin block. The incentives compatible thing to do is to give
+the miner X/Y of the reward. Otherwise, we incentive miners to leave BP as soon
+as a block is found and come back after a few days, when their work will receive
+more reward.
+
+[/kp]
 
 Summing it all up, the number of shares $s$ for a given bead is given by:
 
@@ -225,6 +352,15 @@ parent conveys no useful information, since ancestors of each parent are already
 implied when ordering the DAG and including transactions. Visually this means
 that a braid will never have triangles or some other higher order structures.
 
+[kp]
+
+> beads must not name as parents other beads which are
+> ancestors of another parent.
+
+This is pretty standard in DAG based broadcast and consensus algorithms.
+
+[/kp]
+
 A DAG can be totally ordered in linear time using either [Kahn's
 algorithm](https://dl.acm.org/doi/10.1145/368996.369025) or a modified
 depth-first search which terminates when a bead is found that is a common
@@ -244,6 +380,16 @@ new work to change which beads are considered in the "main chain", just as in
 Bitcoin new work can cause a reorganization of the chain ("reorg"), which makes
 a block that was previously an orphan be in the main chain.
 
+[kp]
+
+Conflicting transactions - we don't need to worry about these, as each block is
+a candidate bitcoin block. If it meets bitcoin difficulty, the transaction that
+were in the other braidpool blocks don't matter.
+
+We therefore don't need any resolution or main chain algorithms here.
+
+[/kp]
+
 We have considered the [PHANTOM](https://eprint.iacr.org/2018/104) proposal
 which has many similarities to ours and should be read by implementors. We
 reject it for the following reasons:
@@ -260,12 +406,38 @@ reject it for the following reasons:
    in the absence of attackers, cohorts exceeding the k-width happen naturally
    and cannot be prevented.
 
+[kp]
+
+If we want to do a literature review, we should include other proposals
+too.
+
+[/kp]
+
 ## Simple Sum of Descendant Work
+
+[kp]
+
+I still don't see why we still need it. We needed this when in your original
+proposal the beads were not candidate bitcoin blocks. If all beads on braidpool
+are candidate bitcoin blocks, then we don't need the SSDW algorithm.
+
+[/kp]
 
 Within Bitcoin, the "Longest Chain Rule" determines which tip has the most work
 among several possible tips. The "Longest Chain Rule" only works at constant
 difficulty and the actual rule is a "Highest Work" rule when you consider
 difficulty changes.
+
+[kp]
+
+Why doesn't it work the miner chosen difficulty? If we know the approximate
+amount of work that each share represents, then we simply distribute block
+reward by weighted amount of work done.
+
+The epoch is defined as all the shares between two bitcoin blocks found by
+braidpool. There is no loss of weight over time.
+
+[/kp]
 
 Therefore we require an algorithm to calculate the total work for each bead.
 This total work can then be used to select the highest work tips as well as to
@@ -366,15 +538,26 @@ is expected to produce on average one bead per bitcoin block. For miners smaller
 than this they will be allocated to a [Sub-Pool](#sub-pools).
 
 Note that this equal-variance target is not enforceable by consensus. A miner
-could choose to run multiple Braidpool instances or just change the code to
-select a different target, and the Braidpool software-selected target is an
+can choose to run multiple Braidpool instances or just change the code to select
+a different target, and the Braidpool software-selected target is an
 unenforceable recommendation. The consequence of a miner ignoring this
-recommendation would be to decrease a single miner's variance at the expense of
+recommendation will be to decrease a single miner's variance at the expense of
 producing more beads in the braid for the same amount of work. This slows down
 the braid and increases the bead time. Accepting this equal-variance target
 allows Braidpool to accommodate the maximum number of miners, the most work, and
 the fastest possible bead time without resorting to allocating more miners to
 [Sub-Pools](#sub-pools).
+
+[kp]
+
+Is is the same as saying, each braidpool will have the minimum difficulty they
+are willing to accept?
+
+I don't envision a single braidpool instance with multiple subpools. I see
+multiple braidpool instances with different operational parameters, including
+minimum difficulty and maybe even geographic location.
+
+[/kp]
 
 # Payout Update
 
@@ -395,8 +578,22 @@ beyond the capability of bitcoin script. Therefore generally one must find a
 mechanism such that a supermajority (Byzantine Fault Tolerant subset) of
 Braidpool participants can sign the output, which is essentially reflecting the
 consensus about share payments into bitcoin. This is done by having a single
-P2TR public key which is controlled by a Byzantine fault tolerant supermajority
-of miners which must cooperate to sign the output.
+public key which is controlled by a Byzantine fault tolerant supermajority of
+miners which must cooperate to sign the output.
+
+[kp]
+
+Suggested edit:
+
+> This is done by having a single public key which is controlled by a Byzantine
+> fault tolerant supermajority of miners which must cooperate to sign the
+> output.
+
+This is achieved by creating a UTXO that can be signed using a byzantine fault
+tolerant threshold signature scheme.
+
+[kp]
+
 
 The payout is a rolling commitment that spends the previous payout update
 output and creates a new one including rewards and fees from the new block. This
@@ -405,6 +602,12 @@ uncommitted in the sighash. Since each miner may choose different transactions,
 the exact amount of the fee reward in this block cannot be known until a block
 is successfully mined, and we cannot commit to this value.
 
+[kp]
+
+We should add a diagram here explaining the UTXOs and UHPO relationship.
+
+[/kp]
+
 Since newly created coinbase outputs cannot be spent for 100 blocks due to a
 bitcoin consensus rule, the Payout Update transaction is always 100 blocks
 in arrears. The transaction that must be included in a bead spends the most
@@ -412,6 +615,12 @@ recent Braidpool coinbase that's at least 100 blocks old into a new Payout
 Commitment output.
 
 ![On-Chain Eltoo from the Eltoo paper](https://github.com/mcelrath/braidcoin/raw/master/eltoo.png)
+
+[kp]
+
+We should create our own version of this diagram.
+
+[kp]
 
 This rolling set of payout updates is an on-chain version of the [Eltoo
 protocol](https://blockstream.com/eltoo.pdf). By spending the previous Payout
@@ -440,10 +649,16 @@ set. This is the "UTXO set" of the decentralized mining pool, and calculation
 and management of the UHPO set is the primary objective of the decentralized
 mining pool.
 
-The UHPO set can be simply represented as a transaction which has as inputs all
-unspent coinbases mined by the pool, and one output for each unique miner with
-an amount decided by his share contributions subject to the consensus mechanism
-rules.
+[kp]
+
+This set cardinality is 1? :)
+
+[kp]
+
+The UHPO set can be simply represented as a transaction which has all unspent
+coinbases mined by the pool as inputs, and one output per miner. The amount for
+each miner is decided by his share contributions subject to the consensus
+mechanism rules.
 
 In p2pool this UHPO set was placed directly in the coinbase of every block,
 resulting in a large number of very small payments to hashers. One advantage of
@@ -460,15 +675,26 @@ formed, fully signed and valid bitcoin transactions that can be broadcast. See
 [Payout Authorization](#payout-authorization) for considerations on how to
 sign/authorize this UHPO transaction.
 
+[kp]
+
+The UHPO transactions are signed and broadcast using the braidpool P2P
+network. In case of the pool shutting down, the miners will have to figure out a
+communication channel to broadcast their signature shares and reach agreement on
+spending the UHPO.
+
+This sounds like a problem.
+
+[kp]
+
 We don't ever want to actually have to broadcast this UHPO set transaction
 except in the case of pool failure. Similar to other optimistic protocols like
 Lightning, we will withhold this transaction from bitcoin and update it
-out-of-band with respect to bitcoin. With each new block we will update the UHPO
-set transaction to account for any new shares since the last block mined by the
-pool.
+out-of-band with respect to bitcoin. With each new block found by braidpool, we
+will update the UHPO set transaction to account for any new shares since the
+last block mined by the pool.
 
 Furthermore a decentralized mining pool should support "withdrawal" by hashers.
-This would take the form of a special message or transaction sent to the pool
+This will take the form of a special message or transaction sent to the pool
 (and agreed by consensus within the pool) to *remove* a hasher's output from the
 UHPO set transaction, and create a new separate transaction which pays that
 hasher, [authorizes](#payout-authorization) it, and broadcasts it to bitcoin.
@@ -476,16 +702,45 @@ Miners may not cash out for the *current* difficulty adjustment window (because
 the share/BTC price is not yet decided), but may only cash out for the *last*
 (and older) difficulty adjustment window(s).
 
+[kp]
+
+We need to address potential race condition and instability periods when miners
+are cashing out and new bitcoin blocks are being found. If there is no such
+instability, we should explain why. I expect this question will be raised during
+review.
+
+
+[/kp]
+
+
 The share value for the *current* difficulty adjustment epoch is encoded
 proportionally in the UHPO transactions, however this is only for use in the
 case of catastrophic failure of Braidpool. During normal operation, the UHPO
 transaction is fixed at the end of the difficulty adjustment window when the
 share/BTC price for that epoch is known.
 
+[kp]
+
+Why is the share value fixed?
+
+We don't need a fixed share value. A miner's share value over a period can
+determined by their claimed difficulty. The difficulty is claimed at the outset,
+then all shares confirm the miner mined with that difficulty as some shares will
+get close to that difficulty.
+
+[/kp]
+
 # Payout Update and Settlement Signing
 
 Once a bitcoin block is mined by the pool, Braidpool will kick off a signing
 ceremony to create a new Payout Commitment and UHPO settlement transaction.
+
+[kp]
+
+How can this ceremony be disrupted during normal operation of braidpool, or by
+an attacker?
+
+[kp]
 
 It is impossible or impractical to sign the payout update and UHPO set
 transactions prior to mining a block, because the extranonce used by mining
@@ -498,6 +753,17 @@ corresponding key shares and keys associated with signing these. As long as
 $n-t$ nodes successfully delete these shares and keys, and the RCA and UHPO
 transactions are distributed to all nodes, it then becomes impossible to spend
 the aggregated Braidpool funds in any other way.
+
+[kp]
+
+1. What is RCA?
+
+2. Whoa. We trusting miners to behave themselves and delete the key shares?
+
+3. Before we get into the details, we should first talk about the protocol that
+   constitutes the ceremony.
+
+[/kp]
 
 FIXME should update and settlement keys be different here?
 
@@ -524,6 +790,12 @@ for the other branch."
 
 The script
 
+[kp]
+
+We need to work out the detail here. Loads to do, I think.
+
+[/kp]
+
 ## Pool Transactions and Derivative Instruments
 
 If the decentralized mining pool supports transactions of its own, one could
@@ -532,6 +804,20 @@ the UHPO set transaction with that of another party. In this way unpaid shares
 can be delivered to an exchange, market maker, or OTC desk in exchange for
 immediate payment (over Lightning, for example) or as part of a derivatives
 contract.
+
+[kp]
+
+We need a commitment to buy the rewards. I have addressed this in my blog post
+and proposed a solution that works with channels construction.
+
+What we need issue
+
+1. Market maker to put in BTC to be redeemed for all BTC that will be generated
+   by a certain miner.
+2. At the end of the period, neither MM nor M should be able to pull out of the
+   transaction.
+
+[kp]
 
 The reason that delivery of shares can constitute a derivative contract is that
 they are actually a measurement of *hashrate* and have not yet settled to
@@ -544,10 +830,33 @@ A private arrangement can be created where one party *buys future shares* from
 another in exchange for bitcoin up front. This is a *futures* contract, where
 the counterparty to the miner is taking on pool "luck" risk and fee rate risk.
 
+[kp]
+
+Bitcoin can do better. We can build cryptographically secure futures
+contracts. If we can, I think we should.
+
+[/kp]
+
 In order to form hashrate derivatives, it must be posible to deliver shares
 across two different difficulty adjustment windows. Shares in one difficulty
 adjustment window have a different value compared to shares in another window,
 due to the difficulty adjustment itself. If one can compute the derivative
+
+[kp]
+
+The shares from different difficulty windows don't need to be traded. What is
+traded is the fact that shares generated certain amount of bitcoin and that
+reward is what is exchanged.
+
+So miner buys a contract to deliver all the bitcoin they will earn on braidpool
+to market maker, say it will be G BTC. Market maker promises to give F BTC for
+that G BTC. The relationship between F and G is the risk the market maker lives
+on.
+
+The reason is also that market makers have no use for the braidpool shares. They
+have no market value at all. Meanwhile G BTC is G BTC.
+
+[/kp]
 
 $$
     \frac{d({\rm hashrate})}{d({\rm BTC})} = \frac{d_1-d_2}{{\rm BTC}_1 - {\rm BTC}_2}
@@ -612,6 +921,16 @@ literature. This means that on pool startup, the first 4 blocks must be directly
 and immediately paid out to hashers, as there are not enough known parties to
 sign a multi-signature, and we don't even know their pubkeys to construct a
 (P2TR, P2SH, etc) bitcoin output address and scriptPubKey.
+
+[kp]
+
+As we talked on call, we should get rid of this requirement.
+
+We discussed alternatives, like sharing the reward as per the normal operations
+rules. Or dropping the byzantine failure requirement in the bootstrapping period
+of the first instance of braidpool.
+
+[/kp]
 
 After the first 4 blocks, we assume that 66%+1 miners who have previously mined
 a block must sign the coinbase output(s), paying into the UHPO set transaction.
