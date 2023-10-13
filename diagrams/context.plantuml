@@ -1,0 +1,13 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+System(miner, "Mining faciility")
+
+System(bitcoin, "Bitcoin", "The bitcoin p2p network")
+
+System("pool", "Decentralized mining pool")
+
+Rel_R(miner, bitcoin, "Participate in bitcoin")
+
+Rel_L(miner, pool, "Participate in mining pool")
+
+@enduml
