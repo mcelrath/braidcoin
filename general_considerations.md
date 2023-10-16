@@ -253,12 +253,14 @@ another in exchange for bitcoin up front. This is a *futures* contract, where
 the counterparty to the miner is taking on pool "luck" risk and fee rate risk.
 
 In order to form hashrate derivatives, it must be posible to deliver shares
-across two different difficulty adjustment windows. Shares in one difficulty
-adjustment window have a different value compared to shares in another window,
-due to the difficulty adjustment itself. If one can compute the derivative
-\[
-    \frac{d({\rm hashrate})}{d({\rm BTC}) = \frac{d_1-d_2}{BTC_1 - BTC_2}
-\]
+across two different difficulty adjustment windows $d_1$ and $d_2$. Shares in one difficulty
+adjustment window have a different value $BTC_1$ compared to shares in another window $BTC_2$,
+due to the difficulty adjustment itself. If one can compute the discrete derivative
+
+$$
+    \frac{d({\rm hashrate})}{d({\rm BTC})} = \frac{d_1-d_2}{BTC_1 - BTC_2}
+$$
+
 then derivative instruments such as options and futures can be constructed by
 private contract, where shares from different difficulty adjustment epochs are
 delivered to the derivative contract counterparty in exchange for BTC, possibly
