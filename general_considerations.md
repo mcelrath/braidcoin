@@ -1,28 +1,37 @@
-I'm writing this post to help organize and clarify some of the thought
-surrounding "decentralized mining pools" for bitcoin, their requirements, and
-some unsolved problems that must be solved before such a thing can be fully
-specified.
+This post help organize and clarify some of the thoughts surrounding
+"decentralized mining pools" for bitcoin, their requirements, and some unsolved
+problems that must be solved before a functioning decentralized mining pool can
+be fully specified.
 
 # Decentralized Mining Pools for Bitcoin
 
-A decentralized mining pool consists of the following components:
-1. A [weak block](#weak-blocks) and difficulty target mechanism,
-2. A [consensus mechanism](#consensus-mechanism) for collecting and accounting
-   for shares,
-3. A [payout commitment](#payout-commitment) requiring a quorum of participants
-   to sign off on share payments,
-4. A [signing procedure](#signing-procedure) for signing the [payout
-   commitment](#payout-commitment) in such a way that the pool participants are
-   properly paid,
-5. A [transaction selection](#transaction-selection) mechanism for building
+A decentralized mining pool (DMP) conceptually consists of the following
+components. Note that these do not explicitly define a separation of concerns of
+the implementation.
+1. A [weak block](#weak-blocks) or shares, and a difficulty target mechanism,
+2. A [P2P Netowork](#p2p-network) for distributing shares to all particpants.
+3. A [transaction selection](#transaction-selection) mechanism for building
    valid bitcoin blocks.
+4. A [consensus mechanism](#consensus-mechanism) for reaching an eventually
+   consistent view of weak blocks. This is byzantine fault tolerant.
+5. A [payout commitment](#payout-commitment) reach agreement on the payout for
+   all participants based on the eventially consistent view of weak blocks. This
+   again is BFT.
+6. A [signing procedure](#signing-procedure) for signing the [payout
+   commitment](#payout-commitment) in such a way that the pool participants
+   receive the payout securely and reliably.
+
+![Decentralized Mining Pool Conext Diagram](./diagrams/context.png "Decentralized Mining Pool Conext Diagram")
 
 The improvements being made by the
 [StratumV2](https://github.com/stratum-mining/sv2-spec) project also include
-encrypted communication to mining devices. These problems are important largely
-factorizable from the pool itself, so we won't include discussion of that here,
-but it is assumed that any decentralized mining pool would use the StratumV2
-communications mechanisms.
+encrypted communication between mining facilities and pool operators. As seen in
+the context diagram above, the mining facility doesn't need to communicate with
+a pool operator and therefore the encrypted communication that Stratum V2 uses
+is not required. Instead, the mining facility directly communicates with the
+DMP. This communication between the mining facility and the DMP uses 1) compact
+block specifications for broadcasting blocks miners work on and otherwise 2)
+uses the DMP's P2P protocol.
 
 # Weak Blocks
 
@@ -32,29 +41,32 @@ difficulty target $t$. The *pool* specifies this parameter $t$ and when "weak
 block" is found, it is communicated to the pool.
 
 The share is itself a bearer proof that a certain amount of sha256 computation
-has been done. The share itself must have a structure that indicates that it
+has been done. The share itself must have a structure that confirms that it
 "belongs" to a particular pool. In the case of centralized pools, this happens
 because the pool itself hands out "work units" (bitcoin headers) corresponding
-to a block that has been created by the pool, with transaction selection done
-by the (centralized) pool.
+to a block that has been created by the pool, with transaction selection done by
+the (centralized) pool.
 
 In the case of a decentralized pool, the share itself must have additional
-structure that indicates to other miners in the pool that the share belongs to
-the pool, and if it had met bitcoin's difficulty target, the share contains
-commitments such that all *other* miners in the pool would be paid according to
-the share tally achieved by the decentralized [consensus
-mechanism](#consensus-mechanism) of the pool.
+structure to confirm to other miners in the pool that the share belongs to the
+pool. On top of that if the share meets bitcoin's difficulty target, the share
+contains commitments such that all *other* miners in the pool will be paid
+according to the share accounting run on top of the eventually consistent view
+of shares, i.e. the [consensus mechanism](#consensus-mechanism) of the pool.
 
 Shares or blocks which do not commit to the additional metadata proving that the
-share is part of the pool must be excluded from the share calculation, and those
+share is part of the pool will be excluded from the share calculation, and those
 miners are not "part of" the pool. In other words, submitting a random sha256
 header to a pool must not count as a share contribution unless the ultimate
 payout for that share, had it become a bitcoin block, would have paid the pool
 in such a way that all other hashers are paid.
 
+[kp] This example raises too many questions. Maybe it was too early to
+have the example here.  []/kp
+
 For example, consider a decentralized mining pool's "share" that looks like:
 
-    Version | Previous Block Hash | Merkle Root | Timestamp | Difficulty Target | Nonce
+    Version | Previous Block Hash | Merkle Root | Timestamp | Difficulty Target | Nonce |
     Coinbase Transaction | Merkle Sibling | Merkle Sibling | ...
     Pool Metadata
 
@@ -64,6 +76,9 @@ Transaction` transaction is included in the `Merkle Root`. We assume that this
 `Coinbase Transaction` commits to any additional data needed for the pool's
 [consensus mechansim](#consensus-mechanism), for instance in an `OP_RETURN`
 output.
+
+[kp] We are getting into too many details here. The reader has no clue
+about why we are using P2TR.  [/kp]
 
 The `Coinbase Transaction` is a standard transaction having no inputs, and
 should have the following outputs:
@@ -152,6 +167,24 @@ times faster than bitcoin blocks, and results in miners 600 times smaller being
 able to contribute, and a 600x factor reduction in variance compared to solo
 mining.
 
+[kp] 
+
+There's a different way to think about this. You can reach consensus only after
+everyone has seen the same information, that is true. However, thinking in terms
+of eventual consistency, you don't have the time pressure anymore. This is
+enabled by and is required in the asynchronous communication model that we live
+in.
+
+All we want to do is achieve consensus on reward distribution for happened at
+time $T$ in $T + \delta T$ time.
+
+If miners starts broadcasting shares at time $T$ and the next block in found in
+$T + F$, then we need to reach consensus at some time in the future $T + F +
+\delta T$, s.t. $\delta T$ meets the conditions that 1) it is acceptable to
+miners; 2) doesn't violate the incentives compatible requirements.
+
+[/kp]
+
 While a 600x decrease in variance is a worthy goal, this is not enough of an
 improvement to allow a single modern mining device to reduce its variance enough
 to be worthwhile. Therefore, a different solution must be found for miners
@@ -167,10 +200,45 @@ assume the DAG does not have constant difficulty so combining difficulties must
 be done correctly. The solution is to identify the heaviest weight linear path
 from genesis to tip, where the difficulties are summed along the path.
 
+[kp]
+
+We don't need to worry about identifying the heaviest weight linear path. We can
+sum up the difficulties of all the shares between epochs, as I describe in my
+proposal. As long as a share has produced a PoW that is valid for the the block
+the miner is working on, they will be rewarded for it.
+
+In other words, I don't think we can actually ever find a block that will be the
+tip of the chain. If there are 500 miners, there will always be 500 shares in
+flight (give or take). We can't wait for them them converge on a tip. Instead,
+the DAG will converge on a tip naturally, as a share matching bitcoin difficulty
+is found and all miners start producing shares that reference that share.
+
+This goes to the point where shares reference other miner's shares to
+build the DAG.
+
+I think we need to break free from the need to find the heaviest weighted tip. I
+need to be convinced we need this when we have a DAG and a natural convergence
+to a tip every time a share matching bitcoin difficulty is found.
+
+[/kp]
+
+[kptodo]
+
+Drop in a diagram here
+
+[/kptodo]
+
 Finally, we caution that in considering mechanisms to include even smaller
 miners, one must not violate the "progress-free" characteristic of bitcoin. That
 is, one should not sum work from a subset of smaller miners to arrive at a
 higher-work block in the DAG.
+
+[kp]
+
+How can you sum work from smaller miners to arrive at higher-work block? I don't
+understand the reason for this caveat.
+
+[/kp]
 
 # Payout Commitment
 
@@ -194,6 +262,13 @@ bitcoin. The "UTXO set" of the consensus mechanism is the set of payment outputs
 for all hashers, with amounts decided by the recorded shares and consensus
 mechanism rules.
 
+[kp]
+
+What are the inputs to these payment outputs for hashers?  They can't
+all have the same coinbase input, so what are they spending?
+
+[/kp]
+
 We will term the set of hasher payments the Unspent Hasher Payment Output (UHPO)
 set. This is the "UTXO set" of the decentralized mining pool, and calculation
 and management of the UHPO set is the primary objective of the decentralized
@@ -204,10 +279,16 @@ unspent coinbases mined by the pool, and one output for each unique miner with
 an amount decided by his share contributions subject to the consensus mechanism
 rules.
 
+[kptodo]
+
+Add diagram showing the UHPO structure and how they evolve.
+
+[/kptodo]
+
 In p2pool this UHPO set was placed directly in the coinbase of every block,
 resulting in a large number of very small payments to hashers. One advantage of
-traditional pools is that the *aggregate* these payments over multiple blocks so
-that the number of withdrawals per hasher is reduced. A decentralized mining
+traditional pools is that they *aggregate* these payments over multiple blocks
+so that the number of withdrawals per hasher is reduced. A decentralized mining
 pool should do the same. The consequence of this was that in p2pool, the large
 coinbase with small outputs competed for block space with fee-paying
 transactions.
@@ -221,16 +302,31 @@ sign/authorize this UHPO transaction.
 
 We don't ever want to actually have to broadcast this UHPO set transaction
 except in the case of pool failure. Similar to other optimistic protocols like
-Lightning, we will withhold this transaction from bitcoin and update it
-out-of-band with respect to bitcoin. With each new block we will update the UHPO
-set transaction to account for any new shares since the last block mined by the
-pool.
+Lightning, the DMP will withhold this transaction from bitcoin and update it
+out-of-band with respect to bitcoin. With each new block the UHPO set is updated
+to account for any new shares since the last block mined by the pool.
+
 
 Furthermore a decentralized mining pool should support "withdrawal" by hashers.
 This would take the form of a special message or transaction sent to the pool
 (and agreed by consensus within the pool) to *remove* a hasher's output from the
 UHPO set transaction, and create a new separate transaction which pays that
 hasher, [authorizes](#payout-authorization) it, and broadcasts it to bitcoin.
+
+[kptodo]
+
+Address the question: This introduces another consensus protocol, and if an attacker can
+attack this protocol, it is game over again.
+
+[/kptodo]
+
+[kptodo]
+
+Address the concern: I also think the UHPO set is actually being built using
+consensus, and again that consensus protocol can be attacked.
+
+[/kptodo]
+
 
 ## Pool Transactions and Derivative Instruments
 
@@ -240,6 +336,17 @@ the UHPO set transaction with that of another party. In this way unpaid shares
 can be delivered to an exchange, market maker, or OTC desk in exchange for
 immediate payment (over Lightning, for example) or as part of a derivatives
 contract.
+
+[kp]
+
+This is underestimating the complexity involved. Who proposes the exchange/swap,
+who accepts it. and finally how do they accept it. Are we going to need another
+consensus protocol or a co-ordinator here?
+
+In any case, if we go with the approach of supporting transactions, we need to
+spec them too.
+
+[/kp]
 
 The reason that delivery of shares can constitute a derivative contract is that
 they are actually a measurement of *hashrate* and have not yet settled to
@@ -274,6 +381,24 @@ pool to support private contract derivative instruments are:
    the previous epoch)
 3. The ability transact shares across two difficulty adjustment windows.
 
+[kp]
+
+I think we are not addressing how the above three points will be fulfilled. At
+the moment, we are saying we will have a transaction system. We don't talk about
+how the scripting language.
+
+Another concern with introducing a transaction system is that we have make sure
+we safeguard against double spends. Could an attacker with enough hashrate to
+take on braidpool stall progress by constantly thrashing between forks? They
+don't even have to wait for a block to be found. They could keep changing the
+tip so that braidpool can't find a stable enough period to make progress.
+
+We should think this through. Does introducing a transaction system open
+braidpool to more types of attacks than without it? Instinctively, with a larger
+surface area, we will be vulnerable to more types of attacks.
+
+[/kp]
+
 It may be tempting to turn a decentralized mining pool into a full DeFi market
 place with an order book. We caution that the problem of Miner Extractable Value
 (MEV) is a serious one that destroys fairness and confidence in the system, and
@@ -305,6 +430,15 @@ assume that in the [weak block](#weak-blocks) metadata, the pool participants
 include a pubkey with which they will collaboratively sign the payout
 authorization.
 
+[kp]
+
+We should describe this in detail to describe the concept of dynamic
+membership - what happens if total number of participants changes or if the
+number of signing participants changes?
+
+[/kp]
+
+
 The most logical set of signers to authorize the coinbase spends are the set of
 miners who have already successfully mined a bitcoin block. We want to avoid
 having any single miner having unilateral control over a coinbase and the
@@ -314,6 +448,41 @@ literature. This means that on pool startup, the first 4 blocks must be directly
 and immediately paid out to hashers, as there are not enough known parties to
 sign a multi-signature, and we don't even know their pubkeys to construct a
 (P2TR, P2SH, etc) bitcoin output address and scriptPubKey.
+
+[kp]
+
+Can we roll over the payout of the first four blocks to be evenly split between
+miners mining the first five blocks.  What you proposed will work in a new
+network, but in bitcoin mining directly paying the first four miners without
+sharing the rewards will be a deal breaker for any miner.
+
+Another point is that bootstrapping this pool will be really impossible. We are
+asking four large miners to get together to bootstrap the pool. This won't be
+practical.
+
+Instead, we should think of a way that members can join the pool, start
+contributing shares and once anyone gets lucky, the entire pool gets the
+reward. Intuitively, this seems like a more practically feasible way to
+bootstrap the pool.
+
+If change the requirement that signers have already found a block to be
+something along the lines that signers collectievly include 75% of the hashrate,
+then we can still require that enough hashrate is committing to a payout and at
+the same can bootstrap the network.
+
+It could work something like this:
+
+1. All miners have the same DAG view, so if they are not malicious they will
+   construct the same UHPO view.
+2. They run a DKG/TSS round to sign the payout with top 66%+1 of the hashrate
+   providers included in the TSS signing group.
+3. A BFT agreement is reached to sign the payout in the form of the threshold
+   signature.
+4. We will need to make sure all participants run a determinisitic algorithm to
+   construct the UHPO view. We can provide for this with simple tie-breaking
+   rules.
+
+[/kp]
 
 After the first 4 blocks, we assume that 66%+1 miners who have previously mined
 a block must sign the coinbase output(s), paying into the UHPO set transaction.
@@ -391,6 +560,12 @@ entirely for faster verification of shares. This introduces a problem that a
 hasher could construct a block with invalid transactions, but this would be
 easily discovered if that hasher ever mined a block, and his shares could
 invalidated.
+
+[Comment: I proposed that this should be done before receiving miners include a
+sending minder's shares in the DAG. The receiving miners include a back pointer
+to a received share, thus including it in the DAG. Once enough miners have a
+back pointer to a share, it is kind of buried in the DAG and thus gets
+rewarded. That is the general intuition behind reaching agreement with DAGs.]
 
 A transaction selection mechanism using both a decentralized mining pool and
 Stratum V2 should be able to easily slot into the block structure required by
